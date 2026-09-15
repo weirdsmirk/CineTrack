@@ -198,14 +198,16 @@ export default function TitleDetail({
     toast(`Marked as ${STATUS_BADGE[s]?.label ?? s}`, 'info')
   }
 
-  const metaParts: { text: string; isScore?: boolean }[] = source
+  const imdbIdRaw = data?.imdb_id ?? data?.external_ids?.imdb_id ?? null
+  const imdbId = typeof imdbIdRaw === 'string' && /^tt\d+$/.test(imdbIdRaw) ? imdbIdRaw : null
+  const metaParts: { text: string; isScore?: boolean; href?: string }[] = source
     ? [
         { text: releaseLabel ?? entry?.year ?? yearOf(source) ?? '—' },
         ...(type === 'movie'
           ? (formattedRuntime ? [{ text: formattedRuntime }] : [])
           : [{ text: `${data?.number_of_episodes ?? entry?.totalEpisodes ?? '—'} EPISODES` }]),
         ...(typeof source.vote_average === 'number' && source.vote_average > 0
-          ? [{ text: `TMDb ${source.vote_average.toFixed(1)}`, isScore: true }]
+          ? [{ text: `IMDb ${source.vote_average.toFixed(1)}`, isScore: true, href: imdbId ? `https://www.imdb.com/title/${imdbId}/` : undefined }]
           : []),
       ]
     : []
@@ -302,13 +304,13 @@ export default function TitleDetail({
                   {metaParts.map((part, idx) => (
                     <span key={idx}>
                       {idx > 0 && <span className="mx-2 text-border">·</span>}
-                      {part.isScore ? (
+                      {part.isScore && part.href ? (
                         <a
-                          href={`https://www.themoviedb.org/${type}/${id}`}
+                          href={part.href}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="font-medium text-[var(--primary)] underline decoration-[var(--primary)]/40 underline-offset-[3px] transition-opacity hover:opacity-75"
-                          title="View on TMDb"
+                          title="View on IMDb"
                         >
                           {part.text}
                         </a>

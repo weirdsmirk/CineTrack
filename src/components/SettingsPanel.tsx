@@ -213,7 +213,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             />
             <Toggle
               label="Community scores"
-              note="Show TMDb vote averages beside release years."
+              note="Show IMDb vote averages beside release years."
               value={settings.showCommunityScores}
               onChange={(v) => set('showCommunityScores', v)}
             />
