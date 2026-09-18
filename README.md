@@ -1,68 +1,78 @@
 # CineTrack
 
-CineTrack is my personal movie and TV tracking app. I made it to keep track of what I want to watch, what I'm watching, what I've finished, and my ratings.
+CineTrack is my personal movie and TV tracking app. It helps me keep track of what I want to watch, what I'm watching, what I've finished, ratings, rewatches, and episode progress.
 
-It runs locally and keeps the library on your machine. Movie and TV information comes from TMDb.
+The app runs locally and keeps my library on my machine. Movie and TV information comes from TMDb.
 
-## What it does
+## Tech stack
 
-* Track movies and TV shows
-* Mark titles as planned, watching, watched, or dropped
-* Track TV episodes and seasons
-* Rate and favourite titles
-* Keep a rewatch history
-* Search and discover movies and shows
-* View basic stats about your library
-* Import and export your data
-
-## Tech Stack
-
-* React
-* TypeScript
+* React and TypeScript
 * Vite
 * Tailwind CSS
 * Recharts
-* SQLite with sql.js
+* SQLite with `sql.js`
 * TMDb API
 * Vitest
 
-## Run Locally
+## Requirements
 
-You'll need Node.js 22.12 or newer and a TMDb API key.
+* Node.js 22.12 or newer
+* npm
+* A TMDb API key
 
-Clone the repo and install the dependencies:
+## Setup
+
+Install the dependencies:
 
 ```bash
-git clone https://github.com/weirdsmirk/CineTrack.git
-cd CineTrack
 npm ci
 ```
 
-Add your TMDb key to a `.env` file in the project root:
+Create a `.env` file in the project root and add your TMDb key:
 
 ```env
 TMDB_KEY=your-key-here
 ```
 
-Then start the app:
+## Run locally
+
+Start the development server:
 
 ```bash
 npm run dev
 ```
 
-The app will run locally at the address shown in the terminal.
+The app will run at the address shown in the terminal.
 
-## Other Commands
+## Production
+
+Build the app:
 
 ```bash
-npm test
-npm run typecheck
 npm run build
+```
+
+Start the local production server:
+
+```bash
 npm run start
 ```
 
-Your local library is stored with the project, so the database can be moved along with it.
+## Useful commands
 
----
+```bash
+npm test          # run tests
+npm run typecheck # check TypeScript
+npm run build     # create production build
+npm run start     # run production server
+```
 
-Metadata is provided by TMDb. CineTrack uses the TMDb API but is not endorsed or certified by TMDb.
+## Project layout
+
+* `src/` contains the React app and UI.
+* `src/components/` contains the main app components.
+* `src/lib/` contains the library, TMDb, and settings logic.
+* `data/` contains the local database.
+* `.github/` contains the CI workflow.
+
+CineTrack is made for personal, local use. Your library stays on your machine apart from requests to TMDb for movie and TV metadata.
