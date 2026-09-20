@@ -51,7 +51,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
     <div className="space-y-16">
       <section>
         <div className="border-b border-border pb-6">
-          <p className="animate-fade rule-label">Personal moving-image archive · Est. {new Date().getFullYear()}</p>
+          
           {/* Masthead sets in two beats: roman first, then the italic. */}
           <h1 className="mt-3 max-w-[14ch] font-display text-[clamp(48px,7vw,92px)] leading-[0.95] tracking-tight">
             <MastheadName name={settings.archiveName} />
