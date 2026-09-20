@@ -76,3 +76,7 @@ npm run start     # run production server
 * `.github/` contains the CI workflow.
 
 CineTrack is made for personal, local use. Your library stays on your machine apart from requests to TMDb for movie and TV metadata.
+
+## Privacy
+
+CineTrack collects nothing: no analytics, no tracking, no accounts, and no data leaves your machine except direct requests to the TMDb API for movie and TV metadata. Your entire library lives in the local SQLite database in `data/` and your browser storage.
