@@ -74,7 +74,7 @@ export default function MonthlyChart({ entries }: { entries: Entry[] }) {
                   tickLine={false}
                   axisLine={false}
                   dy={8}
-                  fontFamily="var(--font-mono)"
+                  fontFamily="var(--font-sans)"
                 />
                 <YAxis hide domain={[0, 'auto']} />
                 <Tooltip content={<ChartTip />} cursor={{ stroke: 'var(--primary)', strokeOpacity: 0.35 }} />

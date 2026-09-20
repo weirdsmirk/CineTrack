@@ -155,7 +155,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                     </button>
                     <span className="mt-2 flex items-center justify-center gap-1">
                       <span
-                        className={`truncate font-mono text-[10px] uppercase tracking-[0.14em] ${
+                        className={`truncate font-sans text-[10px] uppercase tracking-[0.14em] ${
                           active ? '' : 'text-muted-foreground'
                         }`}
                         style={active ? { color: accent } : undefined}
@@ -163,7 +163,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                         {t.name}
                       </span>
                       {active && (
-                        <span aria-hidden className="font-mono text-[10px]" style={{ color: accent }}>
+                        <span aria-hidden className="font-sans text-[10px]" style={{ color: accent }}>
                           ✓
                         </span>
                       )}
@@ -365,7 +365,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               <div className="rule-label mb-2 text-[10px]">Database Engine</div>
               <div className="flex items-center justify-between gap-3 border border-border bg-card p-3">
                 <div className="min-w-0">
-                  <div className="font-mono text-[11px] font-medium text-foreground">data/cinetrack.db</div>
+                  <div className="font-sans text-[11px] font-medium text-foreground">data/cinetrack.db</div>
                   <div className="mt-0.5 text-[11px] text-muted-foreground">Local SQLite storage</div>
                 </div>
                 <button
@@ -560,7 +560,7 @@ function NumberStepper({
         >
           −
         </button>
-        <span className="flex h-7 w-8 items-center justify-center border-x border-border font-mono text-[11px] font-medium tabular-nums text-foreground">
+        <span className="flex h-7 w-8 items-center justify-center border-x border-border font-sans text-[11px] font-medium tabular-nums text-foreground">
           {value}
         </span>
         <button

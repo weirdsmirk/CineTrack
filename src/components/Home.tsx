@@ -111,7 +111,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
                   )}
                 </span>
                 {e.mediaType === 'tv' && (
-                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                  <span className="font-sans text-[11px] tabular-nums text-muted-foreground">
                     {Math.round(progress(e) * 100)}%
                   </span>
                 )}
@@ -134,11 +134,11 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
                     onClick={() => onOpen(a.entry.mediaType, a.entry.id)}
                     className="group flex w-full items-baseline gap-4 py-3 text-left transition-colors duration-200 hover:text-[var(--primary)]"
                   >
-                    <span className="w-16 shrink-0 font-mono text-[10px] tabular-nums text-[var(--accent)]">{a.label}</span>
+                    <span className="w-16 shrink-0 font-sans text-[10px] tabular-nums text-[var(--accent)]">{a.label}</span>
                     <span className="min-w-0 flex-1 truncate font-display text-[19px] transition-transform duration-300 group-hover:translate-x-1">
                       {a.entry.title}
                     </span>
-                    <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                    <span className="shrink-0 font-sans text-[10px] tabular-nums text-muted-foreground">
                       {settings.dateStyle === 'relative' ? formatRelativeDay(a.at) : formatDayMonth(a.at)}
                     </span>
                   </button>
@@ -198,7 +198,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
                       View <span aria-hidden>→</span>
                     </span>
                   </span>
-                  <span className="hidden shrink-0 self-center font-mono text-[10px] tabular-nums text-muted-foreground sm:block">
+                  <span className="hidden shrink-0 self-center font-sans text-[10px] tabular-nums text-muted-foreground sm:block">
                     0{i + 1}
                   </span>
                 </button>

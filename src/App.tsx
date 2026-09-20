@@ -113,7 +113,7 @@ export default function App() {
               >
                 {n.label}
                 {settings.showNavHints && (
-                  <span aria-hidden className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground/60">
+                  <span aria-hidden className="font-sans text-[9px] tracking-[0.1em] text-muted-foreground/60">
                     {navModifier()}
                     {n.key}
                   </span>
@@ -130,7 +130,7 @@ export default function App() {
 
 <div className="-mr-2 flex items-center justify-end gap-4">
               {settings.showNavHints && (
-                <span className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground/60">
+                <span className="font-sans text-[9px] tracking-[0.1em] text-muted-foreground/60">
                   {navModifier()},
                 </span>
               )}

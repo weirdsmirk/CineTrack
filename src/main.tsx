@@ -24,11 +24,11 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
         <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-foreground">
           <div className="max-w-lg border border-border bg-card p-6 shadow-lg">
             <h1 className="font-display text-[26px] text-[var(--primary)]">Something went wrong</h1>
-            <p className="mt-2 font-mono text-[12px] text-muted-foreground">
+            <p className="mt-2 font-sans text-[12px] text-muted-foreground">
               {isDev ? err.message : 'The application hit an unexpected error. Try again or reload the page.'}
             </p>
             {isDev && err.stack && (
-              <pre className="mt-4 max-h-40 overflow-auto bg-muted p-3 font-mono text-[10px] text-muted-foreground">
+              <pre className="mt-4 max-h-40 overflow-auto bg-muted p-3 font-sans text-[10px] text-muted-foreground">
                 {err.stack}
               </pre>
             )}
@@ -47,7 +47,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
               </button>
             </div>
             <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-              Error ID: <span className="font-mono">{this.state.errorId}</span>. If this keeps happening, export your library from Settings before contacting support.
+              Error ID: <span className="font-sans">{this.state.errorId}</span>. If this keeps happening, export your library from Settings before contacting support.
             </p>
           </div>
         </div>

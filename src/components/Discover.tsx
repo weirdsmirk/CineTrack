@@ -552,7 +552,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
         <>
           {shelvesError && (
             <div role="alert" className="animate-fade flex items-center justify-between gap-4 border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
-              <p className="font-mono text-[12px] text-[var(--primary)]">{shelvesError}</p>
+              <p className="font-sans text-[12px] text-[var(--primary)]">{shelvesError}</p>
               <button
                 onClick={() => setShelfRetry((n) => n + 1)}
                 className="press shrink-0 border border-[var(--primary)] bg-[var(--primary)] px-3 py-1 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-primary-foreground hover:opacity-90"
@@ -579,7 +579,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
         <>
           {error && (
             <div role="alert" className="animate-fade flex items-center justify-between gap-4 border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-4 py-3">
-              <p className="font-mono text-[12px] text-[var(--primary)]">{error}</p>
+              <p className="font-sans text-[12px] text-[var(--primary)]">{error}</p>
               <button
                 onClick={() => {
                   setError(null)

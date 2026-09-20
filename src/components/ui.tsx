@@ -168,7 +168,7 @@ export function SectionHead({ index, title, note, right, rule = true }: { index?
       {/* The rule beneath the head draws itself in rather than appearing. */}
       {rule && <span aria-hidden className="animate-rule absolute inset-x-0 bottom-0 h-px bg-border" />}
       <div className="flex items-baseline gap-4 min-w-0">
-        {index && <span className="animate-fade font-mono text-[11px] tracking-[0.2em] text-[var(--accent)]">{index}</span>}
+        {index && <span className="animate-fade font-sans text-[11px] tracking-[0.2em] text-[var(--accent)]">{index}</span>}
         <div className="min-w-0">
           <h2 className="font-display text-[34px] sm:text-[38px] italic leading-none tracking-tight">{title}</h2>
           {note && <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground whitespace-normal md:whitespace-nowrap">{note}</p>}
@@ -223,7 +223,7 @@ export function Stat({ label, value, unit }: { label: string; value: string | nu
       <div className="rule-label text-[11px] tracking-[0.18em]">{label}</div>
       <div className="mt-2.5 flex items-baseline gap-2">
         <span className="font-display text-[48px] sm:text-[54px] leading-none tracking-tight tabular-nums">{shown}</span>
-        {unit && <span className="font-mono text-[13px] text-muted-foreground">{unit}</span>}
+        {unit && <span className="font-sans text-[13px] text-muted-foreground">{unit}</span>}
       </div>
     </div>
   )
@@ -465,7 +465,7 @@ export const Poster = memo(function Poster({
         >
           {titleOf(item)}
         </span>
-        <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+        <span className="font-sans text-[10px] tabular-nums text-muted-foreground">
           {yearOf(item) || '—'}
           {community && <span className="text-[var(--accent)]"> · ★ {community}</span>}
         </span>
@@ -612,7 +612,7 @@ export function SearchInput({
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="animate-fade border border-dashed border-border px-6 py-14 text-center font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+    <div className="animate-fade border border-dashed border-border px-6 py-14 text-center font-sans text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
       {children}
     </div>
   )

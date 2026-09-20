@@ -45,7 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                     : 'border-border bg-card text-foreground'
               }`}
             >
-              <span className="mr-2 font-mono text-[11px] uppercase tracking-[0.12em] opacity-80" aria-hidden>
+              <span className="mr-2 font-sans text-[11px] uppercase tracking-[0.12em] opacity-80" aria-hidden>
                 {t.kind === 'error' ? '!' : t.kind === 'success' ? '✓' : 'i'}
               </span>
               {t.message}

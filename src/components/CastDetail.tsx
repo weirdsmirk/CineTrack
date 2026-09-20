@@ -177,7 +177,7 @@ export default function CastDetail({
                   {facts.length > 0 && (
                     <ul className="mt-2 space-y-1">
                       {facts.map((f, i) => (
-                        <li key={i} className="font-mono text-[11px] tracking-[0.06em] text-muted-foreground">
+                        <li key={i} className="font-sans text-[11px] tracking-[0.06em] text-muted-foreground">
                           {f}
                         </li>
                       ))}

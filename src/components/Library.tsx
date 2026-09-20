@@ -1,4 +1,5 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { type MediaType, type TmdbTitle } from '../lib/tmdb'
 import { lastActivityAt, useLibrary, type Entry, type Status } from '../lib/library'
 import { useSettings } from '../lib/settings'
@@ -200,112 +201,163 @@ function FilterBar({
   onMinRating: (v: (typeof RATING_OPTIONS)[number]['id']) => void
 }) {
   const [open, setOpen] = useState(false)
-  const wrap = useRef<HTMLDivElement>(null)
+  const [shown, setShown] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({})
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const boxRef = useRef<HTMLDivElement | null>(null)
+  const leaveTimer = useRef<number | null>(null)
   const { settings } = useSettings()
 
+  const updatePosition = useCallback(() => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const popoverWidth = 300
+    const viewportWidth = window.innerWidth
+    const left = Math.min(rect.right - popoverWidth, viewportWidth - popoverWidth - 16)
+    const top = rect.bottom + 8
+    setPopoverStyle({ left: `${Math.max(16, left)}px`, top: `${top}px` })
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    },
+    [],
+  )
+
   useEffect(() => {
-    if (!open) return
-    const onDown = (e: MouseEvent) => {
-      if (!wrap.current?.contains(e.target as Node)) setOpen(false)
-    }
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setOpen(false)
-        triggerRef.current?.focus()
+    if (open) {
+      setLeaving(false)
+      let raf2 = 0
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => {
+          setShown(true)
+          updatePosition()
+        })
+      })
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          setOpen(false)
+          triggerRef.current?.focus()
+        }
+      }
+      const onResize = () => updatePosition()
+      window.addEventListener('keydown', onKey, true)
+      window.addEventListener('resize', onResize)
+      window.addEventListener('scroll', onResize, true)
+      return () => {
+        cancelAnimationFrame(raf1)
+        cancelAnimationFrame(raf2)
+        window.removeEventListener('keydown', onKey, true)
+        window.removeEventListener('resize', onResize)
+        window.removeEventListener('scroll', onResize, true)
       }
     }
-    document.addEventListener('mousedown', onDown)
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey)
-    }
-  }, [open])
+    setShown(false)
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    leaveTimer.current = window.setTimeout(() => setLeaving(true), 200)
+  }, [open, updatePosition])
 
   const active = filter !== 'all' || sort !== settings.defaultSort || minRating > 0
   const activeCount = (filter !== 'all' ? 1 : 0) + (sort !== settings.defaultSort ? 1 : 0) + (minRating > 0 ? 1 : 0)
   const sortLabel = SORTS.find((s) => s.id === sort)?.label
 
-  return (
-    <div className="relative z-20 shrink-0" ref={wrap}>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-controls="library-filter-popover"
-        aria-label={`Filter shelf${activeCount ? `, ${activeCount} active` : ''}`}
-        className={`press relative flex h-9 items-center justify-center border px-4 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
-          open || active
-            ? 'border-[var(--primary)] bg-card text-[var(--primary)]'
-            : 'border-border bg-background text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
-        }`}
-      >
-        <span>Filter</span>
-        {activeCount > 0 && (
-          <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center border border-[var(--primary)] bg-[var(--primary)] px-1 font-mono text-[10px] font-bold leading-none text-primary-foreground">
-            {activeCount}
-          </span>
-        )}
-      </button>
-
-      {open && (
-        <div id="library-filter-popover" role="dialog" aria-label="Filter library" className="quiet-scroll animate-[ct-tick_180ms_var(--ease-sheet)_both] absolute right-0 top-[calc(100%+6px)] z-50 max-h-[min(70vh,520px)] w-[300px] origin-top-right overflow-y-auto border border-border bg-background p-4 shadow-[0_12px_40px_rgba(0,0,0,0.22)]">
-          <div className="rule-label mb-3 border-b border-border pb-2">
-            {count} shown · sorted by {sortLabel}
-          </div>
-          <FilterGroup label="Status">
-            {FILTERS.map((f) => {
-              const isActive = filter === f
-              const isStatus = f !== 'all'
-              const statusKey = f as import('../lib/library').Status
-              const activeStyle = isStatus ? STATUS_STYLE[statusKey] : 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
-              const inactiveStyle = isStatus
-                ? STATUS_INACTIVE[statusKey]
-                : 'border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
-              return (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => onFilter(f)}
-                  aria-pressed={isActive}
-                  className={`press shrink-0 whitespace-nowrap border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] ${isActive ? activeStyle : inactiveStyle}`}
-                >
-                  {f}
-                </button>
-              )
-            })}
-          </FilterGroup>
-          <FilterGroup label="Order">
-            {SORTS.map((s) => (
-              <Chip key={s.id} active={sort === s.id} onClick={() => onSort(s.id)}>
-                {s.label}
-              </Chip>
-            ))}
-          </FilterGroup>
-          <FilterGroup label="Minimum rating">
-            {RATING_OPTIONS.map((r) => (
-              <Chip key={r.id} active={minRating === r.id} onClick={() => onMinRating(r.id)}>
-                {r.label}
-              </Chip>
-            ))}
-          </FilterGroup>
-          {active && (
+  const popover = (
+    <div
+      ref={boxRef}
+      id="library-filter-popover"
+      role="dialog"
+      aria-label="Filter library"
+      style={popoverStyle}
+      className="quiet-scroll animate-[ct-tick_180ms_var(--ease-sheet)_both] fixed z-[100] max-h-[min(70vh,520px)] w-[300px] origin-top-right overflow-y-auto border border-border bg-background p-4 shadow-[0_12px_40px_rgba(0,0,0,0.22)]"
+    >
+      <div className="rule-label mb-3 border-b border-border pb-2">
+        {count} shown · sorted by {sortLabel}
+      </div>
+      <FilterGroup label="Status">
+        {FILTERS.map((f) => {
+          const isActive = filter === f
+          const isStatus = f !== 'all'
+          const statusKey = f as import('../lib/library').Status
+          const activeStyle = isStatus ? STATUS_STYLE[statusKey] : 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
+          const inactiveStyle = isStatus
+            ? STATUS_INACTIVE[statusKey]
+            : 'border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+          return (
             <button
+              key={f}
+              type="button"
               onClick={() => {
-                onFilter('all')
-                onSort(settings.defaultSort)
-                onMinRating(0)
+                onFilter(f)
+                setOpen(false)
               }}
-              className="press mt-1 font-sans text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground underline underline-offset-4 hover:text-[var(--primary)]"
+              aria-pressed={isActive}
+              className={`press shrink-0 whitespace-nowrap border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] ${isActive ? activeStyle : inactiveStyle}`}
             >
-              Reset filters
+              {f}
             </button>
-          )}
-        </div>
+          )
+        })}
+      </FilterGroup>
+      <FilterGroup label="Order">
+        {SORTS.map((s) => (
+          <Chip key={s.id} active={sort === s.id} onClick={() => { onSort(s.id); setOpen(false); }}>
+            {s.label}
+          </Chip>
+        ))}
+      </FilterGroup>
+      <FilterGroup label="Minimum rating">
+        {RATING_OPTIONS.map((r) => (
+          <Chip key={r.id} active={minRating === r.id} onClick={() => { onMinRating(r.id); setOpen(false); }}>
+            {r.label}
+          </Chip>
+        ))}
+      </FilterGroup>
+      {active && (
+        <button
+          onClick={() => {
+            onFilter('all')
+            onSort(settings.defaultSort)
+            onMinRating(0)
+            setOpen(false)
+          }}
+          className="press mt-1 font-sans text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground underline underline-offset-4 hover:text-[var(--primary)]"
+        >
+          Reset filters
+        </button>
       )}
     </div>
+  )
+
+  return (
+    <>
+      <div className="relative shrink-0" ref={triggerRef}>
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-controls="library-filter-popover"
+          aria-label={`Filter shelf${activeCount ? `, ${activeCount} active` : ''}`}
+          className={`press relative flex h-9 items-center justify-center border px-4 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
+            open || active
+              ? 'border-[var(--primary)] bg-card text-[var(--primary)]'
+              : 'border-border bg-background text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+          }`}
+        >
+          <span>Filter</span>
+          {activeCount > 0 && (
+            <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center border border-[var(--primary)] bg-[var(--primary)] px-1 font-sans text-[10px] font-bold leading-none text-primary-foreground">
+              {activeCount}
+            </span>
+          )}
+        </button>
+      </div>
+      {(open || shown) && !leaving && createPortal(popover, document.body)}
+    </>
   )
 }
 

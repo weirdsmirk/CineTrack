@@ -256,7 +256,7 @@ export default function TitleDetail({
 
         {error && !source && (
           <div className="flex min-h-[50vh] flex-col items-center justify-center p-12 text-center animate-fade">
-            <span className="mb-2 font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--primary)]">
+            <span className="mb-2 font-sans text-[11px] uppercase tracking-[0.16em] text-[var(--primary)]">
               Failed to load catalogue entry
             </span>
             <p className="max-w-md text-[13px] text-muted-foreground">{error}</p>
@@ -279,7 +279,7 @@ export default function TitleDetail({
           <div className="animate-fade">
             {error && (
               <div role="alert" className="mx-6 mt-4 flex flex-wrap items-center justify-between gap-3 border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-3 py-2">
-                <span className="font-mono text-[11px] text-[var(--primary)]">Latest catalogue details unavailable · {error}</span>
+                <span className="font-sans text-[11px] text-[var(--primary)]">Latest catalogue details unavailable · {error}</span>
                 <button
                   type="button"
                   onClick={() => setDetailAttempt((a) => a + 1)}
@@ -307,7 +307,7 @@ export default function TitleDetail({
 
               <div className="animate-rise flex min-h-[285px] flex-col [animation-delay:80ms]">
                 <h1 className="font-display text-[42px] leading-[1.05] tracking-tight">{entry?.title || titleOf(source)}</h1>
-                <p className="mt-2 truncate font-mono text-[11px] tracking-[0.14em] text-muted-foreground">
+                <p className="mt-2 truncate font-sans text-[11px] tracking-[0.14em] text-muted-foreground">
                   {metaParts.map((part, idx) => (
                     <span key={idx}>
                       {idx > 0 && <span className="mx-2 text-border">·</span>}
@@ -384,8 +384,8 @@ export default function TitleDetail({
                             aria-label={entry.rating ? `Rating: ${entry.rating}/10` : 'Rate title'}
                             className={`press flex h-8 w-8 items-center justify-center transition-all ${
                               entry.rating
-                                ? 'bg-[var(--accent)] text-accent-foreground font-mono text-[12px] font-medium tabular-nums shadow-xs hover:opacity-90'
-                                : 'border border-dashed border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground font-mono text-[12px]'
+                                ? 'bg-[var(--accent)] text-accent-foreground font-sans text-[12px] font-medium tabular-nums shadow-xs hover:opacity-90'
+                                : 'border border-dashed border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground font-sans text-[12px]'
                             }`}
                           >
                             {entry.rating ?? '—'}
@@ -395,7 +395,7 @@ export default function TitleDetail({
                           </span>
                         </div>
                         {entry.watchedAt != null && (
-                          <span className="font-mono text-[12px] tabular-nums text-muted-foreground">
+                          <span className="font-sans text-[12px] tabular-nums text-muted-foreground">
                             {new Date(entry.watchedAt).toLocaleDateString('en-GB')}
                           </span>
                         )}
@@ -417,7 +417,7 @@ export default function TitleDetail({
                         >
                           <RewatchIcon />
                           {entry.rewatches.length > 0 && (
-                            <span className="pointer-events-none absolute -right-1.5 -top-1.5 flex h-[17px] min-w-[17px] items-center justify-center border border-[var(--primary)] bg-[var(--primary)] px-1 font-mono text-[10px] font-bold leading-none text-primary-foreground shadow-xs">
+                            <span className="pointer-events-none absolute -right-1.5 -top-1.5 flex h-[17px] min-w-[17px] items-center justify-center border border-[var(--primary)] bg-[var(--primary)] px-1 font-sans text-[10px] font-bold leading-none text-primary-foreground shadow-xs">
                               {entry.rewatches.length}
                             </span>
                           )}
@@ -781,7 +781,7 @@ function CastCarousel({
 
   if (cast.length === 0) {
     return (
-      <div className="animate-fade border border-dashed border-border px-6 py-12 text-center font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+      <div className="animate-fade border border-dashed border-border px-6 py-12 text-center font-sans text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
         No cast on file
       </div>
     )
@@ -1262,7 +1262,7 @@ function EditModal({
                 onClick={() => setDraftRating(null)}
                 aria-label="Set as unrated"
                 title="Set as unrated"
-                className={`group relative press aspect-square flex-1 border font-mono text-[11px] font-medium transition-colors ${
+                className={`group relative press aspect-square flex-1 border font-sans text-[11px] font-medium transition-colors ${
                   draftRating === null
                     ? 'border-[var(--foreground)] bg-foreground text-background'
                     : 'border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
@@ -1346,7 +1346,7 @@ function EditModal({
                       // Recording a watch date means watched.
                       if (draftStatus !== 'watched') setDraftStatus('watched')
                     }}
-                    className="h-8 flex-1 border border-border bg-background px-2 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
+                    className="h-8 flex-1 border border-border bg-background px-2 font-sans text-[11px] outline-none focus:border-[var(--primary)]"
                   />
                 )}
                 {draftStatus === 'watched' && draftWatchedAt == null && (
@@ -1397,7 +1397,7 @@ function EditModal({
                     onChange={(e) => setCustomYear(e.target.value)}
                     placeholder="YYYY"
                     maxLength={4}
-                    className="h-8 w-full border border-border bg-background px-2.5 font-mono text-[11px] text-foreground outline-none transition-colors focus:border-[var(--primary)]"
+                    className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[11px] text-foreground outline-none transition-colors focus:border-[var(--primary)]"
                   />
                 </Field>
 
@@ -1410,7 +1410,7 @@ function EditModal({
                       value={customRuntime}
                       onChange={(e) => setCustomRuntime(e.target.value)}
                       placeholder="e.g. 150"
-                      className="h-8 w-full border border-border bg-background px-2.5 font-mono text-[11px] text-foreground outline-none transition-colors focus:border-[var(--primary)]"
+                      className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[11px] text-foreground outline-none transition-colors focus:border-[var(--primary)]"
                     />
                   ) : (
                     <input
@@ -1420,11 +1420,10 @@ function EditModal({
                       value={customEpisodes}
                       onChange={(e) => setCustomEpisodes(e.target.value)}
                       placeholder="e.g. 10"
-                      className="h-8 w-full border border-border bg-background px-2.5 font-mono text-[11px] text-foreground outline-none transition-colors focus:border-[var(--primary)]"
+className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[11px] text-foreground outline-none transition-colors focus:border-[var(--primary)]"
                     />
                   )}
                 </Field>
-              </div>
 
               <Field label="Poster image path">
                 <input
@@ -1433,7 +1432,7 @@ function EditModal({
                   value={customPoster}
                   onChange={(e) => setCustomPoster(e.target.value)}
                   placeholder="/path.jpg (TMDb image path)"
-                  className="h-8 w-full border border-border bg-background px-2.5 font-mono text-[11px] text-foreground outline-none transition-colors focus:border-[var(--primary)]"
+                  className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[11px] text-foreground outline-none transition-colors focus:border-[var(--primary)]"
                 />
               </Field>
 
@@ -1450,9 +1449,10 @@ function EditModal({
             </div>
           </div>
         </div>
+        </div>
 
         <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-border px-4.5 py-3">
-          <span className="select-none font-mono text-[10px] tracking-[0.08em] text-muted-foreground/60" aria-hidden>
+          <span className="select-none font-sans text-[10px] tracking-[0.08em] text-muted-foreground/60" aria-hidden>
             ⏎ to save
           </span>
           <button
@@ -1596,15 +1596,8 @@ function RewatchModal({
                       const at = fromDateInput(ev.target.value)
                       if (at != null) onSetRewatchDate(i, at)
                     }}
-                    className="h-8 flex-1 border border-border bg-background px-2 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
+                    className="h-8 flex-1 border border-border bg-background px-2 font-sans text-[11px] outline-none focus:border-[var(--primary)]"
                   />
-                  <button
-                    onClick={() => setConfirmIndex(i)}
-                    aria-label="Remove rewatch"
-                    className="press flex h-8 w-8 items-center justify-center border border-border text-muted-foreground hover:border-[var(--primary)] hover:text-[var(--primary)]"
-                  >
-                    <CloseIcon />
-                  </button>
                 </li>
               ))}
             </ul>
@@ -1624,7 +1617,7 @@ function RewatchModal({
             max={todayInput()}
             value={rewatchDate}
             onChange={(e) => e.target.value && setRewatchDate(e.target.value)}
-            className="h-8 flex-1 border border-border bg-background px-2 font-mono text-[11px] outline-none focus:border-[var(--primary)]"
+            className="h-8 flex-1 border border-border bg-background px-2 font-sans text-[11px] outline-none focus:border-[var(--primary)]"
           />
           <button
             onClick={() => {
@@ -1795,14 +1788,14 @@ function Seasons({
           return (
             <div key={s.id} className="animate-fade">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-card px-4 py-3">
-                <span className="flex flex-1 items-baseline gap-4">
-                  <span className="font-mono text-[11px] tabular-nums text-[var(--accent)]">
-                    {String(s.season_number).padStart(2, '0')}
-                  </span>
+<span className="flex flex-1 items-baseline gap-4">
+                    <span className="font-sans text-[11px] tabular-nums text-[var(--accent)]">
+                      {String(s.season_number).padStart(2, '0')}
+                    </span>
                   <span className="font-sans font-medium text-[16px] tracking-tight">{s.name}</span>
                   <span className="rule-label">{(s.air_date ?? '').slice(0, 4)}</span>
                 </span>
-                <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                <span className="font-sans text-[11px] tabular-nums text-muted-foreground">
                   {seen}/{s.episode_count}
                 </span>
                 <span className="hidden h-[3px] w-24 bg-secondary sm:block">
@@ -1892,7 +1885,7 @@ function Seasons({
                         >
                           {done && <span className="animate-tick block leading-none">✓</span>}
                         </span>
-                        <span className="w-9 shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                        <span className="w-9 shrink-0 font-sans text-[11px] tabular-nums text-muted-foreground">
                           E{String(e.episode_number).padStart(2, '0')}
                         </span>
                         <span className="relative hidden aspect-video w-[124px] shrink-0 overflow-hidden border border-border bg-muted sm:block">
@@ -1907,7 +1900,7 @@ function Seasons({
                                 className={`h-full w-full object-cover transition-all ${done ? 'opacity-55' : ''}`}
                               />
                           ) : (
-                            <span className="flex h-full items-center justify-center font-mono text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
+                            <span className="flex h-full items-center justify-center font-sans text-[9px] uppercase tracking-[0.12em] text-muted-foreground">
                               No still
                             </span>
                           )}
@@ -1922,7 +1915,7 @@ function Seasons({
                             </span>
                           )}
                         </span>
-                        <span className="hidden shrink-0 text-right font-mono text-[10px] tabular-nums text-muted-foreground sm:block">
+                        <span className="hidden shrink-0 text-right font-sans text-[10px] tabular-nums text-muted-foreground sm:block">
                           <span className="block">{formatEpisodeDate(e.air_date)}</span>
                           {e.runtime ? <span className="block">{e.runtime} min</span> : null}
                         </span>
