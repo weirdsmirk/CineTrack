@@ -88,32 +88,32 @@ export default function Library({
         title="Library"
         note="Your complete collection of movies and series, with personal ratings and viewing state."
         right={
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <FilterBar
-              filter={filter}
-              sort={sort}
-              minRating={minRating}
-              count={shown.length}
-              onFilter={setFilter}
-              onSort={setSort}
-              onMinRating={setMinRating}
-            />
-            <SearchInput value={q} onChange={setQ} className="w-56 md:w-72" />
-          </div>
+          <SearchInput value={q} onChange={setQ} className="w-56 md:w-72" />
         }
       />
 
-      {/* Tabs */}
-      <div className="flex flex-wrap items-center gap-2">
-        {TABS.map((t) => (
-          <Chip
-            key={t.id}
-            active={tab === t.id}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </Chip>
-        ))}
+      {/* Tabs + Filter */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {TABS.map((t) => (
+            <Chip
+              key={t.id}
+              active={tab === t.id}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+            </Chip>
+          ))}
+        </div>
+        <FilterBar
+          filter={filter}
+          sort={sort}
+          minRating={minRating}
+          count={shown.length}
+          onFilter={setFilter}
+          onSort={setSort}
+          onMinRating={setMinRating}
+        />
       </div>
 
       {entries.length === 0 ? (
