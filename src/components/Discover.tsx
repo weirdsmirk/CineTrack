@@ -11,7 +11,7 @@ import {
 } from '../lib/tmdb'
 import { useLibrary } from '../lib/library'
 import { useSettings } from '../lib/settings'
-import { CarouselNav, Chip, Empty, Poster, PosterGrid, PosterSkeleton, SearchInput, SectionHead } from './ui'
+import { CarouselNav, Chip, Empty, Poster, PosterGrid, PosterSkeleton, SearchInput, SectionHead, Spinner } from './ui'
 
 type Mode = 'suggested' | 'trending' | 'movie' | 'tv'
 
@@ -82,34 +82,6 @@ function ShelfRow({ shelf, onOpen }: { shelf: Shelf; onOpen: (t: MediaType, id: 
         })}
       </div>
     </section>
-  )
-}
-
-function ShelfSkeleton() {
-  return (
-    <div className="space-y-10" aria-hidden>
-      {[0, 1, 2].map((row) => (
-        <div key={row}>
-          <div className="mb-4 flex items-end justify-between gap-4 border-b border-border pb-2">
-            <div className="min-w-0 space-y-2">
-              <div className="shimmer h-6 w-56 bg-muted" />
-              <div className="shimmer h-3.5 w-80 bg-muted/60" />
-            </div>
-            <div className="flex shrink-0 gap-2">
-              <div className="h-8 w-8 border border-border bg-muted/30 shimmer" />
-              <div className="h-8 w-8 border border-border bg-muted/30 shimmer" />
-            </div>
-          </div>
-          <div className="-mx-1 flex gap-5 overflow-hidden px-1 pb-2">
-            {Array.from({ length: 7 }, (_, i) => (
-              <div key={i} className="w-36 shrink-0 sm:w-40">
-                <PosterSkeleton />
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
   )
 }
 
@@ -589,7 +561,11 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
               </button>
             </div>
           )}
-          {shelvesLoading && shelves.length === 0 && !shelvesError && <ShelfSkeleton />}
+          {shelvesLoading && shelves.length === 0 && !shelvesError && (
+            <div className="flex min-h-[50vh] items-center justify-center py-12 animate-fade" aria-live="polite">
+              <Spinner size={38} />
+            </div>
+          )}
           {!shelvesLoading && !shelvesError && shelves.length === 0 && (
             <Empty>No suggestions yet — rate something in your library or try Trending</Empty>
           )}
