@@ -93,34 +93,36 @@ export default function App() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/92 backdrop-blur">
-        {/* Three tracks so the nav sits optically centred regardless of side widths. */}
-        <div className="grid w-full grid-cols-2 items-center gap-3 px-6 py-3 md:grid-cols-[1fr_auto_1fr] md:gap-4 lg:px-10 xl:px-12">
-          <button onClick={() => goPage('home')} aria-label="CineTrack home" className="press flex items-center justify-self-start">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/75 backdrop-blur-md">
+        {/* Three tracks so the nav sits optically centred regardless of side widths.
+            Stretch, not centre: the nav buttons run the full header height so the
+            active rule rests on the bottom border. */}
+        <div className="grid w-full grid-cols-2 items-stretch gap-3 px-4 md:grid-cols-[1fr_auto_1fr] md:gap-4 lg:px-6">
+          <button onClick={() => goPage('home')} aria-label="CineTrack home" className="press flex items-center justify-self-start py-3">
             <Logo size={24} markSize={44} wordmark={false} />
           </button>
 
-          <nav className="quiet-scroll order-3 col-span-2 flex items-center justify-center gap-1 overflow-x-auto md:order-none md:col-span-1 md:col-start-2">
+          <nav className="quiet-scroll order-3 col-span-2 flex items-stretch justify-center gap-1 overflow-x-auto md:order-none md:col-span-1 md:col-start-2">
             {NAV.map((n) => (
               <button
                 key={n.id}
                 onClick={() => goPage(n.id)}
                 aria-current={page === n.id && !info ? 'page' : undefined}
                 title={`${n.label} (${navModifier()}${n.key})`}
-                className={`relative flex items-center gap-1.5 px-3 pb-2 pt-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
-                  page === n.id && !info ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+                className={`relative flex items-center justify-center gap-1.5 px-3 py-3 font-sans text-[12px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
+                  page === n.id && !info ? 'text-foreground' : 'text-secondary-foreground hover:text-foreground'
                 }`}
               >
                 {n.label}
                 {settings.showNavHints && (
-                  <span aria-hidden className="font-sans text-[9px] tracking-[0.1em] text-muted-foreground/60">
+                  <span aria-hidden className="font-sans text-[10px] tracking-[0.1em] text-muted-foreground">
                     {navModifier()}
                     {n.key}
                   </span>
                 )}
                 <span
                   aria-hidden
-                  className={`absolute inset-x-0 bottom-0 h-[2px] origin-left bg-[var(--primary)] transition-transform duration-300 ease-out ${
+                  className={`absolute inset-x-3 bottom-0 h-[2px] origin-left bg-[var(--primary)] transition-transform duration-300 ease-out ${
                     page === n.id && !info ? 'scale-x-100' : 'scale-x-0'
                   }`}
                 />
@@ -128,16 +130,16 @@ export default function App() {
             ))}
           </nav>
 
-<div className="-mr-2 flex items-center justify-end gap-4">
+          <div className="flex items-center justify-end gap-4 py-3">
               {settings.showNavHints && (
-                <span className="font-sans text-[9px] tracking-[0.1em] text-muted-foreground/60">
+                <span className="font-sans text-[10px] tracking-[0.1em] text-muted-foreground">
                   {navModifier()},
                 </span>
               )}
               <button
                 onClick={() => setSettingsOpen((v) => !v)}
                 aria-label="Open settings"
-                className="press group flex h-8 w-8 items-center justify-center border border-border text-muted-foreground hover:border-[var(--foreground)] hover:bg-card hover:text-foreground"
+                className="press group flex h-8 w-8 items-center justify-center border border-border text-secondary-foreground hover:border-[var(--foreground)] hover:bg-card hover:text-foreground"
               >
               <svg
                 width="15"
@@ -159,7 +161,7 @@ export default function App() {
         </div>
       </header>
 
-      <main id="main-content" tabIndex={-1} className="w-full flex-1 px-6 pb-12 pt-6 outline-none lg:px-10 lg:pb-16 lg:pt-8 xl:px-12">
+      <main id="main-content" tabIndex={-1} className="w-full flex-1 px-4 pb-12 pt-6 outline-none lg:px-6 lg:pb-16 lg:pt-8">
         <Suspense
           fallback={
             <div className="flex min-h-[40vh] items-center justify-center">
@@ -211,7 +213,7 @@ function Footer({
 }) {
   return (
     <footer className="border-t border-border bg-card">
-      <div className="grid w-full gap-10 px-6 py-12 lg:grid-cols-[1.4fr_1fr_1fr] lg:px-10 xl:px-12">
+      <div className="grid w-full gap-10 px-4 py-12 lg:grid-cols-[1.4fr_1fr_1fr] lg:px-6">
         <div>
           <Logo size={24} markSize={40} />
           <p className="mt-4 max-w-[36ch] text-[13px] leading-relaxed text-muted-foreground">
@@ -254,7 +256,7 @@ function Footer({
       </div>
 
       <div className="border-t border-border">
-        <div className="flex w-full flex-wrap items-center justify-between gap-x-8 gap-y-2 px-6 py-5 lg:px-10 xl:px-12">
+        <div className="flex w-full flex-wrap items-center justify-between gap-x-8 gap-y-2 px-4 py-5 lg:px-6">
           <span className="rule-label">© {new Date().getFullYear()} CineTrack</span>
           <span className="rule-label">Metadata courtesy of The Movie Database · Not endorsed or certified by TMDb</span>
         </div>
