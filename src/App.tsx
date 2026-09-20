@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { type MediaType, type TmdbTitle } from './lib/tmdb'
-import { useLibrary } from './lib/library'
-import { useSettings } from './lib/settings'
+import { useLibrary, subscribeLibraryHydrated, isLibraryHydrated } from './lib/library'
+import { useSettings, subscribeSettingsHydrated, isSettingsHydrated } from './lib/settings'
 import { Logo, Spinner } from './components/ui'
 import InfoPage, { INFO_LINKS, type InfoSlug } from './components/InfoPages'
 
@@ -23,6 +23,44 @@ const NAV: { id: Page; label: string; key: string }[] = [
 function navModifier(): string {
   if (typeof navigator === 'undefined') return 'Alt'
   return /Mac|iPhone|iPad|Macintosh/.test(navigator.userAgent ?? '') ? '⌥' : 'Alt'
+}
+
+function useAppReady() {
+  const [ready, setReady] = useState(() => isLibraryHydrated() && isSettingsHydrated())
+
+  useEffect(() => {
+    if (ready) return
+    const unsubscribeLibrary = subscribeLibraryHydrated(() => {
+      if (isLibraryHydrated() && isSettingsHydrated()) setReady(true)
+    })
+    const unsubscribeSettings = subscribeSettingsHydrated(() => {
+      if (isLibraryHydrated() && isSettingsHydrated()) setReady(true)
+    })
+    return () => {
+      unsubscribeLibrary()
+      unsubscribeSettings()
+    }
+  }, [ready])
+
+  return ready
+}
+
+function FullscreenLoader() {
+  return (
+    <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-background px-6">
+      <div className="flex flex-col items-center gap-4">
+        <Logo size={32} markSize={56} />
+        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          Loading archive…
+        </p>
+        <div className="w-full max-w-xs h-[3px] bg-border relative overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 w-[30%] bg-[var(--primary)] animate-[ct-rule_1.2s_var(--ease-sheet)_infinite]"
+          />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export default function App() {
@@ -90,6 +128,10 @@ export default function App() {
   }, [goPage])
 
   const openTitle = useCallback((type: MediaType, id: number, seed?: TmdbTitle) => setOpen({ type, id, seed }), [])
+
+  const ready = useAppReady()
+
+  if (!ready) return <FullscreenLoader />
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">

@@ -207,6 +207,7 @@ body {
 :root {
   --ease-sheet: cubic-bezier(0.22, 0.61, 0.28, 1);
   --dur-quick: 200ms;
+  --dur-drawer: 320ms;
   --dur-settle: 460ms;
 }
 
@@ -373,6 +374,41 @@ body {
 }
 .press:active {
   transform: translateY(1px);
+}
+
+/* Modal mechanics: the backdrop recedes while the sheet develops — a tight
+   rise with a photographic settle, never a slide or a bounce. One contract
+   for every dialog, so entrance and exit always mirror each other. The
+   hidden surfaces are also made inert, so the tail of an exit never
+   swallows clicks meant for the page beneath. */
+.modal-backdrop {
+  opacity: 0;
+  transition: opacity var(--dur-quick) ease-out;
+}
+.modal-backdrop[data-open='true'] {
+  opacity: 1;
+}
+.modal-sheet {
+  opacity: 0;
+  transform: translate3d(0, 12px, 0) scale(0.965);
+  transition: opacity var(--dur-quick) ease-out, transform var(--dur-quick) cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modal-sheet[data-open='true'] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+/* Side drawers slide on the same contract as the sheets: one deceleration
+   curve, off-screen resting pose, and an exit that mirrors the entrance.
+   Snappier than the modal settle — a drawer covers a lot of distance fast
+   without ever feeling like it snaps shut. */
+.drawer-sheet {
+  transform: translate3d(100%, 0, 0);
+  transition: transform var(--dur-drawer) var(--ease-sheet);
+  will-change: transform;
+}
+.drawer-sheet[data-open='true'] {
+  transform: translate3d(0, 0, 0);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -294,12 +294,28 @@ async function hydrateFromSqlite() {
     // offline
   } finally {
     hydrating = false
+    notifySettingsHydrated()
     const shouldMirror = hasMutatedDuringHydration
     hasMutatedDuringHydration = false
     dirtyKeys.clear()
     if (shouldMirror) setTimeout(() => mirrorToSqlite(cache), 200)
   }
 }
+
+// Settings hydration completion signal
+const settingsHydrationListeners = new Set<() => void>()
+function notifySettingsHydrated() {
+  for (const fn of [...settingsHydrationListeners]) fn()
+}
+export function subscribeSettingsHydrated(cb: () => void): () => void {
+  if (!hydrating) { cb(); return () => {} }
+  settingsHydrationListeners.add(cb)
+  return () => settingsHydrationListeners.delete(cb)
+}
+export function isSettingsHydrated(): boolean {
+  return !hydrating
+}
+
 void hydrateFromSqlite()
 
 if (typeof window !== 'undefined') {

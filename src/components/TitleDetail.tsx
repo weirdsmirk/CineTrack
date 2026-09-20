@@ -97,7 +97,7 @@ export default function TitleDetail({
   const onClose = useCallback(() => {
     setShown(false)
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
-    closeTimer.current = window.setTimeout(requestClose, 420) // matches the panel slide-out duration
+    closeTimer.current = window.setTimeout(requestClose, 320) // matches the panel slide-out duration
   }, [requestClose])
 
   useEffect(
@@ -107,9 +107,18 @@ export default function TitleDetail({
     [],
   )
 
+  // Double-rAF latch: paint the off-screen pose first, then slide in.
+  // Mirrors SettingsPanel exactly — the single rAF here let the first open
+  // skip the entrance because the browser never painted the closed pose.
   useEffect(() => {
-    const raf = requestAnimationFrame(() => setShown(true))
-    return () => cancelAnimationFrame(raf)
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setShown(true))
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+    }
   }, [])
 
   const [detailAttempt, setDetailAttempt] = useState(0)
@@ -214,9 +223,8 @@ export default function TitleDetail({
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex justify-end bg-[rgba(20,19,15,0.42)] transition-opacity duration-300 ${
-        shown ? 'opacity-100' : 'opacity-0'
-      }`}
+      className={`fixed inset-0 z-50 flex justify-end bg-[rgba(20,19,15,0.42)] transition-opacity duration-[var(--dur-quick)] ${shown ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+      data-open={shown}
       onClick={onClose}
     >
       <div
@@ -227,9 +235,8 @@ export default function TitleDetail({
         role="dialog"
         aria-modal="true"
         aria-label={source ? `${entry?.title || titleOf(source)} — catalogue entry` : 'Catalogue entry'}
-        className={`relative flex h-full w-full max-w-[920px] flex-col overflow-hidden bg-background shadow-[-30px_0_90px_-30px_rgba(0,0,0,0.5)] transition-transform duration-[420ms] will-change-transform [transition-timing-function:var(--ease-sheet)] ${
-          shown ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        className="drawer-sheet relative flex h-full w-full max-w-[920px] flex-col overflow-hidden bg-background"
+        data-open={shown}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-border bg-background px-6 py-3">
@@ -856,9 +863,9 @@ function StatusModal({
   onCloseRef.current = onClose
 
   const close = useCallback(() => {
-    setShown(false)
+setShown(false)
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
-    closeTimer.current = window.setTimeout(() => onCloseRef.current(), 200)
+    closeTimer.current = window.setTimeout(() => onCloseRef.current(), 200) // matches the exit transition duration
   }, [])
 
   useEffect(() => {
@@ -891,8 +898,8 @@ function StatusModal({
 
   const content = (
     <div
-      className="absolute inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-4 transition-opacity duration-200"
-      style={{ opacity: shown ? 1 : 0 }}
+      className={`modal-backdrop absolute inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-4 ${shown ? '' : 'pointer-events-none'}`}
+      data-open={shown}
       onClick={close}
       onWheel={(e) => e.stopPropagation()}
       onTouchMove={(e) => e.stopPropagation()}
@@ -903,9 +910,8 @@ function StatusModal({
         aria-modal="true"
         aria-label={`Status — ${title}`}
         style={{ width: '100%', maxWidth: '320px' }}
-        className={`origin-center border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)] transition-all duration-200 ${
-          shown ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-2 scale-95 opacity-0'
-        }`}
+        className="modal-sheet border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)]"
+        data-open={shown}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex items-center justify-between border-b border-border px-4.5 py-3">
@@ -1214,9 +1220,8 @@ function EditModal({
 
   return (
     <div
-      className={`absolute inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 transition-opacity duration-[260ms] ease-out ${
-        shown ? 'opacity-100' : 'opacity-0'
-      }`}
+      className={`modal-backdrop absolute inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
+      data-open={shown}
       onClick={close}
     >
       <form
@@ -1228,9 +1233,8 @@ function EditModal({
           e.preventDefault()
           save()
         }}
-        className={`flex h-[min(82vh,520px)] w-full max-w-[420px] origin-center flex-col border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)] transition-[opacity,transform] duration-[260ms] will-change-[opacity,transform] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] ${
-          shown ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-2 scale-[0.96] opacity-0'
-        }`}
+        className="modal-sheet flex h-[min(82vh,520px)] w-full max-w-[420px] flex-col border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)]"
+        data-open={shown}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4.5 py-3">
@@ -1515,7 +1519,7 @@ function RewatchModal({
   const close = useCallback(() => {
     setShown(false)
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
-    closeTimer.current = window.setTimeout(() => onCloseRef.current(), 260) // matches the exit transition duration
+    closeTimer.current = window.setTimeout(() => onCloseRef.current(), 200) // matches the exit transition duration
   }, [])
 
   useEffect(() => {
@@ -1547,9 +1551,8 @@ function RewatchModal({
 
   return (
     <div
-      className={`absolute inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 transition-opacity duration-[260ms] ease-out ${
-        shown ? 'opacity-100' : 'opacity-0'
-      }`}
+      className={`modal-backdrop absolute inset-0 z-[60] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
+      data-open={shown}
       onClick={close}
     >
       <div
@@ -1557,9 +1560,8 @@ function RewatchModal({
         role="dialog"
         aria-modal="true"
         aria-label={`Rewatch log — ${title}`}
-        className={`flex h-[min(80vh,500px)] w-full max-w-[420px] origin-center flex-col border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)] transition-[opacity,transform] duration-[260ms] will-change-[opacity,transform] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] ${
-          shown ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-2 scale-[0.96] opacity-0'
-        }`}
+        className="modal-sheet flex h-[min(80vh,500px)] w-full max-w-[420px] flex-col border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)]"
+        data-open={shown}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4.5 py-3">

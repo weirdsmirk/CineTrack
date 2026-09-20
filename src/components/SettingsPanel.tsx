@@ -11,7 +11,30 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
   const [confirmWipe, setConfirmWipe] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLElement | null>(null)
+  const [shown, setShown] = useState(false)
   useFocusTrap(panelRef, open)
+
+  // Because this panel is lazy-mounted the first time it opens, its closed pose
+  // (offscreen to the right) must paint before `data-open` flips — otherwise the
+  // browser has no starting frame to transition from on that very first open.
+  // Two rAFs: the first lets the resting pose be committed on screen, the second
+  // latches `shown` so the slide-in runs from a painted start. Exit mirrors via
+  // `shown` dropping to false while the sheet stays mounted.
+  useEffect(() => {
+    if (!open) {
+      setShown(false)
+      return
+    }
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setShown(true))
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+    }
+  }, [open])
+
 
   useEffect(() => {
     if (!open) return
@@ -76,11 +99,12 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
   return (
     <>
       <div
-        onClick={onClose}
         aria-hidden
-        className={`fixed inset-0 z-50 bg-[rgba(20,19,15,0.42)] transition-opacity duration-300 ${
-          open ? 'opacity-100' : 'pointer-events-none opacity-0'
+        onClick={onClose}
+        className={`fixed inset-0 z-50 bg-[rgba(20,19,15,0.42)] transition-opacity duration-[var(--dur-quick)] ${
+          shown ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
+        data-open={shown}
       />
       <aside
         ref={panelRef}
@@ -88,9 +112,8 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
         aria-modal="true"
         aria-label="Settings"
         inert={!open}
-        className={`quiet-scroll fixed right-0 top-0 z-50 h-full w-full max-w-[420px] overflow-y-auto border-l border-border bg-background transition-transform duration-300 ease-out ${
-          open ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        className="drawer-sheet quiet-scroll fixed right-0 top-0 z-50 h-full w-full max-w-[420px] overflow-y-auto border-l border-border bg-background"
+        data-open={shown}
       >
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
           <span className="rule-label">Settings · Archive preferences</span>

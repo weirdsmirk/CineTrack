@@ -748,35 +748,56 @@ export function ConfirmDialog({
   onCancel: () => void
 }) {
   const [shown, setShown] = useState(false)
+  const [leaving, setLeaving] = useState(false)
   const boxRef = useRef<HTMLDivElement | null>(null)
   useFocusTrap(boxRef, open)
+  // Stable identity: onCancel is an inline prop that changes every parent
+  // render — chasing it would re-run the effect on every commit.
+  const onCancelRef = useRef(onCancel)
+  onCancelRef.current = onCancel
+  const leaveTimer = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    },
+    [],
+  )
 
   useEffect(() => {
-    if (!open) {
-      setShown(false)
-      return
-    }
-    const raf = requestAnimationFrame(() => setShown(true))
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onCancel()
+    if (open) {
+      setLeaving(false)
+      // Double rAF so the browser paints the hidden state before the sheet
+      // develops — without this the enter transition frequently doesn't fire.
+      let raf2 = 0
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setShown(true))
+      })
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation()
+          onCancelRef.current()
+        }
+      }
+      window.addEventListener('keydown', onKey, true)
+      return () => {
+        cancelAnimationFrame(raf1)
+        cancelAnimationFrame(raf2)
+        window.removeEventListener('keydown', onKey, true)
       }
     }
-    window.addEventListener('keydown', onKey, true)
-    return () => {
-      cancelAnimationFrame(raf)
-      window.removeEventListener('keydown', onKey, true)
-    }
-  }, [open, onCancel])
+    // Closed: play the exit transition, then stop rendering.
+    setShown(false)
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current)
+    leaveTimer.current = window.setTimeout(() => setLeaving(true), 200)
+  }, [open])
 
-  if (!open) return null
+  if (!open && leaving) return null
 
-  const content = (
+  return createPortal(
     <div
-      className={`${container ? 'absolute' : 'fixed'} inset-0 z-[100] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-4 transition-opacity duration-200 ${
-        shown ? 'opacity-100' : 'opacity-0'
-      }`}
+      className={`modal-backdrop ${container ? 'absolute' : 'fixed'} inset-0 z-[100] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-4 ${shown ? '' : 'pointer-events-none'}`}
+      data-open={shown}
       onClick={onCancel}
       onWheel={(e) => e.stopPropagation()}
       onTouchMove={(e) => e.stopPropagation()}
@@ -787,9 +808,8 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-desc"
-        className={`w-full max-w-[440px] border border-border bg-background p-6 shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)] transition-all duration-200 ${
-          shown ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-2 scale-95 opacity-0'
-        }`}
+        className="modal-sheet w-full max-w-[440px] border border-border bg-background p-6 shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)]"
+        data-open={shown}
         onClick={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
       >
@@ -834,8 +854,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    container ?? document.body,
   )
-
-  return createPortal(content, container ?? document.body)
 }

@@ -104,9 +104,8 @@ export default function CastDetail({
 
   return (
     <div
-      className={`absolute inset-0 z-[70] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 transition-opacity duration-200 ease-out ${
-        shown ? 'opacity-100' : 'opacity-0'
-      }`}
+      className={`modal-backdrop absolute inset-0 z-[70] flex items-center justify-center bg-[rgba(20,19,15,0.65)] p-3 sm:p-4 ${shown ? '' : 'pointer-events-none'}`}
+      data-open={shown}
       onClick={close}
     >
       <div
@@ -114,9 +113,8 @@ export default function CastDetail({
         role="dialog"
         aria-modal="true"
         aria-label={data ? `Cast file — ${data.name}` : 'Cast file'}
-        className={`flex h-[min(82vh,600px)] w-full max-w-[560px] origin-center flex-col border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)] transition-[opacity,transform] duration-200 will-change-[opacity,transform] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] ${
-          shown ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-2 scale-[0.96] opacity-0'
-        }`}
+        className="modal-sheet flex h-[min(82vh,600px)] w-full max-w-[560px] flex-col border border-border bg-background shadow-[0_30px_90px_-20px_rgba(0,0,0,0.65)]"
+        data-open={shown}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4.5 py-3">

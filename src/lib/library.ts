@@ -190,6 +190,20 @@ let mutatedDuringHydration = false
 /** Coalesce rapid full-snapshot writes so bulk episode updates do not queue stale payloads. */
 let pendingMirrorBody: string | null = null
 let mirrorRunning = false
+
+// Hydration completion signal
+const libraryHydrationListeners = new Set<() => void>()
+function notifyLibraryHydrated() {
+  for (const fn of [...libraryHydrationListeners]) fn()
+}
+export function subscribeLibraryHydrated(cb: () => void): () => void {
+  if (!hydrating) { cb(); return () => {} }
+  libraryHydrationListeners.add(cb)
+  return () => libraryHydrationListeners.delete(cb)
+}
+export function isLibraryHydrated(): boolean {
+  return !hydrating
+}
 function mirrorToSqlite(map: Record<string, Entry>) {
   if (hydrating) {
     mutatedDuringHydration = true
@@ -270,6 +284,7 @@ async function hydrateFromSqlite() {
     /* offline or static build — stay on localStorage */
   } finally {
     hydrating = false
+    notifyLibraryHydrated()
     if (mutatedDuringHydration) mirrorToSqlite(cache)
   }
 }
