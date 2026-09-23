@@ -52,6 +52,18 @@ describe('settings unknown-key passthrough', () => {
     expect(s.showCommunityScores).toBe(true)
   })
 
+  it('clamps the For You shelf width to the grid ceiling', async () => {
+    localStorage.setItem('archive.settings.v1', JSON.stringify({ shelfColumns: 99 }))
+    const mod = await import('./settings')
+    expect(mod.currentSettings().shelfColumns).toBe(12)
+  })
+
+  it('floors the For You shelf width at three per row', async () => {
+    localStorage.setItem('archive.settings.v1', JSON.stringify({ shelfColumns: 1 }))
+    const mod = await import('./settings')
+    expect(mod.currentSettings().shelfColumns).toBe(3)
+  })
+
   it('falls back to the default archive name when cleared', async () => {
     localStorage.setItem('archive.settings.v1', JSON.stringify({ archiveName: 'Kept Name' }))
     const mod = await import('./settings')

@@ -215,6 +215,14 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               max={12}
               onChange={(v) => set('discoverColumns', v)}
             />
+            <NumberStepper
+              label="For You suggestions per row"
+              note="Each category shelf stacks two rows"
+              value={settings.shelfColumns}
+              min={3}
+              max={12}
+              onChange={(v) => set('shelfColumns', v)}
+            />
             <OptionsRow
               label="Poster image quality"
               note="Data-saver fetches smaller artwork"

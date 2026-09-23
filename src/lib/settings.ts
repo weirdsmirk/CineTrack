@@ -37,6 +37,7 @@ export type Settings = {
   posterMotion: boolean
   libraryColumns: number
   discoverColumns: number
+  shelfColumns: number
   includeAdult: boolean
   archiveName: string
   showNavHints: boolean
@@ -59,6 +60,7 @@ const DEFAULTS: Settings = {
   posterMotion: true,
   libraryColumns: 6,
   discoverColumns: 7,
+  shelfColumns: 6,
   includeAdult: false,
   archiveName: DEFAULT_ARCHIVE_NAME,
   showNavHints: true,
@@ -113,6 +115,7 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
   }
   out.libraryColumns = clamp(s.libraryColumns, 3, 12, DEFAULTS.libraryColumns)
   out.discoverColumns = clamp(s.discoverColumns, 3, 12, DEFAULTS.discoverColumns)
+  out.shelfColumns = clamp(s.shelfColumns, 3, 12, DEFAULTS.shelfColumns)
   out.includeAdult = !!s.includeAdult
   return out
 }
@@ -346,7 +349,7 @@ export function useSettings() {
     let sanitized: Settings[K] = value
     // Validate per-key
     if (key === 'theme' && !THEMES.some((t) => t.id === value)) sanitized = DEFAULTS.theme as Settings[K]
-    if ((key === 'libraryColumns' || key === 'discoverColumns') && typeof value === 'number') {
+    if ((key === 'libraryColumns' || key === 'discoverColumns' || key === 'shelfColumns') && typeof value === 'number') {
       sanitized = clamp(value as unknown as number, 3, 12, (DEFAULTS as Record<string, unknown>)[key] as number) as Settings[K]
     }
     if ((key === 'density' && value !== 'comfortable' && value !== 'compact')) {

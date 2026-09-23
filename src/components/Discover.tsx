@@ -11,7 +11,7 @@ import {
 } from '../lib/tmdb'
 import { useLibrary } from '../lib/library'
 import { useSettings } from '../lib/settings'
-import { CarouselNav, Chip, Empty, Poster, PosterGrid, PosterSkeleton, SearchInput, SectionHead, Spinner } from './ui'
+import { Chip, Empty, Poster, PosterGrid, PosterSkeleton, SearchInput, SectionHead, Spinner } from './ui'
 
 type Mode = 'suggested' | 'trending' | 'movie' | 'tv'
 
@@ -22,7 +22,30 @@ const SORTS = [
   { id: 'revenue.desc', label: 'Highest grossing' },
 ]
 
-type Shelf = { key: string; title: string; note?: string; items: TmdbTitle[] }
+/**
+ * One For You shelf — a single category of suggestions. `items` is the pool the
+ * shelf deals from; `load` pulls a further TMDb page for the same category when
+ * the shelf is shuffled, so a press can surface titles the pool never held.
+ */
+type Shelf = {
+  key: string
+  title: string
+  note?: string
+  items: TmdbTitle[]
+  load: (page: number, signal?: AbortSignal) => Promise<TmdbTitle[]>
+}
+
+/** Plates per shelf: two stacked rows of the configured width. */
+const SHELF_ROWS = 2
+/** Candidates kept per shelf — deeper than one hand so shuffling has room. */
+const SHELF_POOL = 24
+/** Ceiling for the runtime pool once shuffles start appending fresh pages. */
+const SHELF_POOL_CAP = SHELF_POOL * 3
+/** Share of a hand drawn from the newest batch; the rest revisits the pool. */
+const FRESH_SHARE = 2 / 3
+
+/** Plate identity — media type falls back the same way Poster infers it. */
+export const plateKey = (t: TmdbTitle) => `${t.media_type ?? (t.title ? 'movie' : 'tv')}-${t.id}`
 
 /** Deterministic spread pick of genres so shelves vary by library but stay stable per session. */
 function hashStr(s: string): number {
@@ -48,39 +71,154 @@ function pickGenres(genres: { id: number; name: string }[], sig: string, n: numb
   return out
 }
 
-/** One horizontally scrolling shelf row with step controls. */
-function ShelfRow({ shelf, onOpen }: { shelf: Shelf; onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void }) {
+/** xorshift32 — a few lines of determinism so a dealt hand survives re-renders. */
+function seedRandom(seed: number): () => number {
+  let s = (seed >>> 0) || 0x9e3779b9
+  return () => {
+    s ^= s << 13
+    s >>>= 0
+    s ^= s >>> 17
+    s ^= s << 5
+    s >>>= 0
+    return s / 0x100000000
+  }
+}
+
+/** Seeded Fisher–Yates: one seed always deals the same order. */
+export function shuffleWithSeed<T>(list: T[], seed: number): T[] {
+  const out = [...list]
+  const rand = seedRandom(seed)
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    ;[out[i], out[j]] = [out[j], out[i]]
+  }
+  return out
+}
+
+/**
+ * Deals one shelf hand: at most `slots` plates, two thirds of them from the
+ * batch the last shuffle pulled so the row visibly turns over, the rest from
+ * the wider pool. A title never repeats inside a hand.
+ */
+export function dealSuggestions(fresh: TmdbTitle[], pool: TmdbTitle[], slots: number, seed: number): TmdbTitle[] {
+  const hand: TmdbTitle[] = []
+  const used = new Set<string>()
+  const draw = (list: TmdbTitle[], limit: number) => {
+    for (const item of list) {
+      if (hand.length >= slots || limit <= 0) return
+      const id = plateKey(item)
+      if (used.has(id)) continue
+      used.add(id)
+      hand.push(item)
+      limit -= 1
+    }
+  }
+  draw(shuffleWithSeed(fresh, seed), Math.ceil(slots * FRESH_SHARE))
+  draw(shuffleWithSeed(pool, seed + 1), slots)
+  return hand
+}
+
+/** Plates currently on screen in every mounted shelf, so a shuffle can steer around them. */
+type ClaimRegistry = { current: Map<string, Set<string>> }
+
+/** One category shelf: two fixed rows of plates with a shuffle control in the header. */
+function ShelfRow({
+  shelf,
+  claims,
+  onOpen,
+}: {
+  shelf: Shelf
+  claims: ClaimRegistry
+  onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void
+}) {
   const { get } = useLibrary()
-  const track = useRef<HTMLDivElement>(null)
-  const step = (dir: number) => track.current?.scrollBy({ left: dir * 560, behavior: 'smooth' })
+  const { settings } = useSettings()
+  const columns = Math.max(1, settings.shelfColumns)
+  const slots = columns * SHELF_ROWS
+
+  const [pool, setPool] = useState(shelf.items)
+  const [fresh, setFresh] = useState<TmdbTitle[]>([])
+  const [seed, setSeed] = useState(0)
+  const [busy, setBusy] = useState(false)
+  // Every shelf is assembled from page one, so refreshes walk forward from there.
+  const pageRef = useRef(1)
+  const busyRef = useRef(false)
+  const requestRef = useRef<AbortController | null>(null)
+
+  const visible = useMemo(() => dealSuggestions(fresh, pool, slots, seed), [fresh, pool, slots, seed])
+
+  // Publish this shelf's plates so a sibling shuffle never repeats one of them.
+  useEffect(() => {
+    claims.current.set(shelf.key, new Set(visible.map(plateKey)))
+    return () => {
+      claims.current.delete(shelf.key)
+    }
+  }, [claims, shelf.key, visible])
+
+  useEffect(() => () => requestRef.current?.abort(), [])
+
+  /** Pulls the next page for this category; a failed pull leaves the hand intact. */
+  const refresh = useCallback(async () => {
+    if (busyRef.current) return
+    busyRef.current = true
+    setBusy(true)
+    const controller = new AbortController()
+    requestRef.current = controller
+    try {
+      const page = pageRef.current + 1
+      const items = await shelf.load(page, controller.signal)
+      if (controller.signal.aborted || items.length === 0) return
+      pageRef.current = page
+      const elsewhere = new Set<string>()
+      for (const [otherKey, plates] of claims.current) {
+        if (otherKey === shelf.key) continue
+        for (const plate of plates) elsewhere.add(plate)
+      }
+      const picked = items.filter((item) => !elsewhere.has(plateKey(item)))
+      if (picked.length === 0) return
+      setFresh(picked)
+      setPool((prev) => {
+        const held = new Set(prev.map(plateKey))
+        return [...picked.filter((item) => !held.has(plateKey(item))), ...prev].slice(0, SHELF_POOL_CAP)
+      })
+    } catch {
+      // Offline or rate limited — the shelf keeps the plates it has.
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }, [claims, shelf])
+
+  const shuffle = () => {
+    setSeed((s) => s + 1)
+    void refresh()
+  }
+
   return (
-    <section aria-label={shelf.title}>
+    <section aria-label={shelf.title} aria-busy={busy}>
       <div className="mb-4 flex items-end justify-between gap-4 border-b border-border pb-2">
         <div className="min-w-0">
           <h3 className="font-display truncate text-[22px]">{shelf.title}</h3>
           {shelf.note && <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">{shelf.note}</p>}
         </div>
-        <CarouselNav
-          onPrev={() => step(-1)}
-          onNext={() => step(1)}
-          prevLabel={`Scroll ${shelf.title} back`}
-          nextLabel={`Scroll ${shelf.title} forward`}
-        />
+        <button
+          type="button"
+          onClick={shuffle}
+          aria-label={`Shuffle ${shelf.title} suggestions`}
+          className="press inline-flex shrink-0 items-center gap-1.5 border border-border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground"
+        >
+          <span aria-hidden className={`inline-block text-[13px] leading-none ${busy ? 'animate-spin' : ''}`}>
+            ↻
+          </span>{' '}
+          Shuffle
+        </button>
       </div>
-      <div ref={track} className="quiet-scroll -mx-1 flex snap-x gap-5 overflow-x-auto px-1 pb-2">
-        {shelf.items.map((item) => {
+      <PosterGrid columns={columns}>
+        {visible.map((item) => {
           const t: MediaType = (item.media_type ?? 'movie') as MediaType
-          return (
-            <div key={`${t}-${item.id}`} className="w-36 shrink-0 snap-start sm:w-40">
-              <Poster
-                item={item}
-                entry={get(t, item.id)}
-                onOpen={onOpen}
-              />
-            </div>
-          )
+          return <Poster key={`${t}-${item.id}`} item={item} entry={get(t, item.id)} onOpen={onOpen} />
         })}
-      </div>
+      </PosterGrid>
     </section>
   )
 }
@@ -261,6 +399,8 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
   }, [mode, type, settings.metadataLanguage])
 
   const shelfToken = useRef(0)
+  // Plates on screen per shelf, shared so a shuffle never repeats one across categories.
+  const claims = useRef(new Map<string, Set<string>>())
 
   // For You shelves: per-seed picks + genre exploration + trending, assembled in parallel.
   // Seeds drive the personal rows; genre rows deliberately reach beyond the library.
@@ -302,17 +442,18 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
           { id: 'primary_release_date.desc', label: 'Newest', gte: 50 },
         ]
         const genrePages = await Promise.all(
-          genrePicks.map((g, i) =>
-            discover('movie', {
+          genrePicks.map((g, i) => {
+            const sort = genreSorts[i % genreSorts.length]
+            return discover('movie', {
               page: 1,
-              sort_by: genreSorts[i % genreSorts.length].id,
+              sort_by: sort.id,
               with_genres: String(g.id),
-              'vote_count.gte': genreSorts[i % genreSorts.length].gte,
+              'vote_count.gte': sort.gte,
             }, { signal: controller.signal }).then(
-              (r) => ({ genre: g, sortLabel: genreSorts[i % genreSorts.length].label, items: r.results.map((x) => ({ ...x, media_type: 'movie' as MediaType })) }),
-              () => ({ genre: g, sortLabel: '', items: [] as TmdbTitle[] }),
-            ),
-          ),
+              (r) => ({ genre: g, sort, items: r.results.map((x) => ({ ...x, media_type: 'movie' as MediaType })) }),
+              () => ({ genre: g, sort, items: [] as TmdbTitle[] }),
+            )
+          }),
         )
         if (!live || token !== shelfToken.current) return
         // First occurrence wins — the same title never repeats across shelves
@@ -320,7 +461,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
         const take = (items: TmdbTitle[], n: number) => {
           const out: TmdbTitle[] = []
           for (const it of items) {
-            const k = `${it.media_type}-${it.id}`
+            const k = plateKey(it)
             if (seen.has(k)) continue
             seen.add(k)
             out.push(it)
@@ -333,28 +474,53 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
         for (const { items } of seedPages) {
           allSeedItems.push(...items)
         }
-        const libraryPicked = take(allSeedItems, 20)
-        if (libraryPicked.length >= 4) {
+        const libraryPicked = take(allSeedItems, SHELF_POOL)
+        if (libraryPicked.length >= 4 && topSeeds.length > 0) {
           next.push({
             key: 'from-library',
             title: 'From your library',
             items: libraryPicked,
+            // A shuffle steps to the next seed, then walks that seed's later pages.
+            load: (page, signal) => {
+              const seed = topSeeds[(page - 1) % topSeeds.length]
+              const inner = Math.floor((page - 1) / topSeeds.length) + 1
+              return recommendations(seed.mediaType, seed.id, inner, { signal }).then(
+                (r) => r.results.map((x) => ({ ...x, media_type: x.media_type ?? seed.mediaType })),
+                () => [] as TmdbTitle[],
+              )
+            },
           })
         }
-        genrePages.forEach(({ genre, sortLabel, items }) => {
-          const picked = take(items, 15)
+        genrePages.forEach(({ genre, sort, items }) => {
+          const picked = take(items, SHELF_POOL)
           if (picked.length >= 4) {
             next.push({
-              key: `genre-${genre.id}-${sortLabel}`,
-              title: `${sortLabel} ${genre.name}`,
+              key: `genre-${genre.id}-${sort.label}`,
+              title: `${sort.label} ${genre.name}`,
               note: 'Beyond your library — something unlike the usual shelf.',
               items: picked,
+              load: (page, signal) =>
+                discover('movie', {
+                  page,
+                  sort_by: sort.id,
+                  with_genres: String(genre.id),
+                  'vote_count.gte': sort.gte,
+                }, { signal }).then(
+                  (r) => r.results.map((x) => ({ ...x, media_type: 'movie' as MediaType })),
+                  () => [] as TmdbTitle[],
+                ),
             })
           }
         })
-        const trendPicked = take(trendItems, 15)
+        const trendPicked = take(trendItems, SHELF_POOL)
         if (trendPicked.length >= 4) {
-          next.push({ key: 'trending-week', title: 'Trending this week', note: 'Across movies and series.', items: trendPicked })
+          next.push({
+            key: 'trending-week',
+            title: 'Trending this week',
+            note: 'Across movies and series.',
+            items: trendPicked,
+            load: (page, signal) => trending('all', 'week', page, { signal }).then((r) => r.results, () => [] as TmdbTitle[]),
+          })
         }
         setShelves(next)
       } catch (e) {
@@ -571,7 +737,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
           )}
           {shelves.map((s, idx) => (
             <div key={s.key} className="animate-fade" style={{ animationDelay: `${idx * 40}ms` }}>
-              <ShelfRow shelf={s} onOpen={onOpen} />
+              <ShelfRow shelf={s} claims={claims} onOpen={onOpen} />
             </div>
           ))}
         </>
