@@ -334,7 +334,7 @@ function FilterBar({
 
   return (
     <>
-      <div className="relative shrink-0" ref={triggerRef}>
+      <div className="relative shrink-0">
         <button
           ref={triggerRef}
           type="button"
