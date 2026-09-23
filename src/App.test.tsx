@@ -49,4 +49,19 @@ describe('nav keyboard shortcuts', () => {
     expect(hint).toContain(',')
     expect(hint).not.toContain('1')
   })
+
+  it('Alt+, closes settings even when a control inside the drawer is focused', async () => {
+    renderApp()
+    fireEvent.keyDown(window, { key: ',', code: 'Comma', altKey: true })
+    await screen.findByRole('dialog', { name: 'Settings' })
+    // The toggle key must still close it from there — not only from page focus.
+    const close = screen.getByRole('button', { name: 'Close' })
+    close.focus()
+    expect(close.closest('[role="dialog"]')).toBeTruthy()
+
+    fireEvent.keyDown(close, { key: ',', code: 'Comma', altKey: true })
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: 'Settings' })).toHaveAttribute('inert')
+    })
+  })
 })

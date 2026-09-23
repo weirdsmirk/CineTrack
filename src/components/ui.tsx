@@ -18,6 +18,9 @@ import { useToast } from './Toast'
 const PINK = '#D93D87'
 const BLUE = '#263C92'
 
+/** DOM id of the settings drawer, so the Alt+, toggle key can recognise its own dialog. */
+export const SETTINGS_PANEL_ID = 'settings-panel'
+
 export function Mark({ size = 28, className }: { size?: number; className?: string }) {
   const height = (size * 100) / 170
   return (

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { LANGUAGES, THEMES, useSettings } from '../lib/settings'
 import { minutesWatched, parseLibraryImport, useLibrary, watchedCount } from '../lib/library'
-import { ConfirmDialog, Chip, useBodyScrollLock, useFocusTrap } from './ui'
+import { ConfirmDialog, Chip, SETTINGS_PANEL_ID, useBodyScrollLock, useFocusTrap } from './ui'
 import { useToast } from './Toast'
 
 export default function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -108,6 +108,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
       />
       <aside
         ref={panelRef}
+        id={SETTINGS_PANEL_ID}
         role="dialog"
         aria-modal="true"
         aria-label="Settings"

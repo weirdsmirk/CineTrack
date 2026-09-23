@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { type MediaType, type TmdbTitle } from './lib/tmdb'
 import { useLibrary } from './lib/library'
 import { useSettings } from './lib/settings'
-import { Logo, Spinner } from './components/ui'
+import { Logo, SETTINGS_PANEL_ID, Spinner } from './components/ui'
 import InfoPage, { INFO_LINKS, type InfoSlug } from './components/InfoPages'
 
 const Home = lazy(() => import('./components/Home'))
@@ -69,12 +69,21 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       if (!e.altKey || e.ctrlKey || e.metaKey) return
       const focusedTarget = e.target instanceof HTMLElement ? e.target : null
-      if (focusedTarget?.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return
+      // Never steal a keystroke while the user is typing into a control.
+      if (focusedTarget?.closest('input, textarea, select, [contenteditable="true"]')) return
+      const dialog = focusedTarget?.closest('[role="dialog"]')
       if (e.code === 'Comma') {
+        // Alt+, toggles the settings drawer, so it must keep working while an
+        // inner control of that drawer holds focus (the focus trap lands there
+        // on open). Any other dialog keeps its shortcut to itself, so shortcuts
+        // don't leak out from behind modals.
+        if (dialog && !(dialog instanceof HTMLElement && dialog.id === SETTINGS_PANEL_ID)) return
         e.preventDefault()
         setSettingsOpen((v) => !v)
         return
       }
+      // Page-jump shortcuts never fire while focus is inside a dialog.
+      if (dialog) return
       const digit = e.code.startsWith('Digit')
         ? e.code.slice(5)
         : e.code.startsWith('Numpad')
