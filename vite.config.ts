@@ -197,6 +197,24 @@ function cinetrackSqlitePersistence(): Plugin {
     return ALLOWED_TMDB_PREFIXES.some((prefix) => norm.startsWith(prefix))
   }
 
+  /** Independent Host allowlist for middleware-owned routes. Vite's own
+   *  hostValidationMiddleware currently runs before plugin middleware, but
+   *  these routes must not depend on that ordering surviving future Vite
+   *  upgrades — this is the DNS-rebinding defense we control. */
+  function isLocalHostHeader(host: unknown): boolean {
+    if (typeof host !== 'string' || !host) return false
+    let u: URL
+    try {
+      u = new URL(`http://${host}`)
+    } catch {
+      return false
+    }
+    // A userinfo component means the parsed host is not what the header claims.
+    if (u.username || u.password) return false
+    const h = u.hostname.replace(/^\[|\]$/g, '').toLowerCase()
+    return h === 'localhost' || h.endsWith('.localhost') || h === '::1' || h === '0.0.0.0' || /^127(?:\.\d{1,3}){3}$/.test(h)
+  }
+
   function sanitizeSubpath(subpath: string): string {
     // Strip any injected api_key param to prevent duplication
     try {
@@ -503,6 +521,23 @@ function cinetrackSqlitePersistence(): Plugin {
           res.end()
           return
         }
+
+        // Middleware-owned JSON routes: hardening headers are set here because
+        // Vite applies server.headers later in the pipeline and they never
+        // reach these responses. The Host allowlist is a DNS-rebinding layer
+        // independent of Vite's middleware ordering.
+        const isSensitivePath = pathname === '/api/tmdb' || pathname.startsWith('/api/tmdb/') || pathname.startsWith('/__data/')
+        if (isSensitivePath) {
+          res.setHeader('X-Content-Type-Options', 'nosniff')
+          res.setHeader('Referrer-Policy', 'no-referrer')
+          res.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+          if (!isLocalHostHeader(req.headers.host)) {
+            res.statusCode = 403
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: 'Forbidden host' }))
+            return
+          }
+        }
         if (lowerPath === '/api.txt' || lowerPath === '/vite.config.ts' || lowerPath.startsWith('/data/') || lowerPath === '/data') {
           res.statusCode = 404
           res.end()
@@ -530,7 +565,12 @@ function cinetrackSqlitePersistence(): Plugin {
             }
           }
           if (secFetchSite) return secFetchSite === 'same-origin'
-          return !strictOriginChecks
+          // Headerless fallback: dev-mode non-browser tools (curl) may still
+          // read, but state-changing requests must carry same-origin evidence.
+          // This closes CSRF writes from browsers old enough to send neither
+          // Origin on POST nor Sec-Fetch-Site; preview stays strict throughout.
+          const method = (req.method || 'GET').toUpperCase()
+          return !strictOriginChecks && (method === 'GET' || method === 'HEAD')
         }
 
         // Enforce same-origin for __data endpoints (CSRF protection).

@@ -263,6 +263,58 @@ describe('parseLibraryImport', () => {
     expect(skipped).toBe(2)
     expect(Object.keys(merged).sort()).toEqual(['movie:1', 'movie:2'])
   })
+
+  it('merges key collisions without overwriting existing data', () => {
+    const existing = [
+      makeEntry({
+        id: 1,
+        mediaType: 'tv',
+        rating: 9,
+        status: 'watching',
+        episodes: { '1-1': 1000 },
+        rewatches: [5000],
+        poster: null,
+      }),
+    ]
+    const payload = JSON.stringify([
+      {
+        id: 1,
+        mediaType: 'tv',
+        title: 'Attacker Title',
+        rating: 1,
+        status: 'dropped',
+        episodes: { '1-1': 9999, '1-2': 2000 },
+        rewatches: [6000],
+        poster: '/incoming.jpg',
+      },
+    ])
+    const { merged, imported, skipped, combined } = parseLibraryImport(payload, existing)
+    expect(imported).toBe(0)
+    expect(combined).toBe(1)
+    expect(skipped).toBe(0)
+    const e = merged['tv:1']
+    // Curated fields survive: the import can never silently erase them.
+    expect(e.rating).toBe(9)
+    expect(e.status).toBe('watching')
+    expect(e.title).toBe('Test')
+    // Progress unions: existing timestamps win on the same episode key.
+    expect(e.episodes).toEqual({ '1-1': 1000, '1-2': 2000 })
+    expect(e.rewatches).toEqual([5000, 6000])
+    // The import may only fill gaps.
+    expect(e.poster).toBe('/incoming.jpg')
+  })
+
+  it('drops non-TMDb image paths from imported rows', () => {
+    const { merged, imported } = parseLibraryImport(
+      JSON.stringify([
+        { id: 3, mediaType: 'movie', title: 'X', poster: 'https://evil.example/x.jpg', backdrop: 'javascript:alert(1)' },
+      ]),
+      [],
+    )
+    expect(imported).toBe(1)
+    expect(merged['movie:3'].poster).toBeNull()
+    expect(merged['movie:3'].backdrop).toBeNull()
+  })
 })
 
 describe('minutesWatched', () => {  it('falls back to 110m for movies and 42m per episode without runtimes', () => {

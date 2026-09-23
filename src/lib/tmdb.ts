@@ -273,13 +273,16 @@ export async function tmdb<T>(  path: string,
             if (ct.includes('application/json')) body = JSON.parse(text)
             else body = { status_message: text.slice(0, 500) }
           } catch {}
-          const msg = (body as { status_message?: string; error?: string })?.status_message ?? (body as { error?: string })?.error
+          // Upstream/proxy error strings are untrusted: strip control chars and
+          // cap length before they flow into Error.message (and from there toasts).
+          const rawMsg = (body as { status_message?: unknown; error?: unknown })?.status_message ?? (body as { error?: unknown })?.error
+          const msg = sanitizeUpstreamText(rawMsg, 300)
           const retry = res.headers.get('retry-after')
           throw new Error(msg ?? `TMDb request failed (${res.status})${retry ? ` — retry after ${retry}s` : ''}`)
         }
 
         const ct = res.headers.get('content-type') || ''
-        if (!ct.includes('application/json')) throw new Error(`Unexpected TMDb response: ${text.slice(0, 200)}`)
+        if (!ct.includes('application/json')) throw new Error(`Unexpected TMDb response: ${sanitizeUpstreamText(text, 200) ?? 'non-JSON body'}`)
         let parsed: unknown
         try {
           parsed = JSON.parse(text)
@@ -316,14 +319,28 @@ export async function tmdb<T>(  path: string,
   return raceAbort(handled as Promise<T>)
 }
 
+/** Untrusted text from the network (TMDb or a look-alike proxy): printable
+ *  characters only, hard-capped, before it can reach an Error message/toast. */
+function sanitizeUpstreamText(value: unknown, max = 300): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const cleaned = value.replace(/[-\u001f\u007f-\u009f]/g, '').trim().slice(0, max)
+  return cleaned || undefined
+}
+
+/** TMDb-relative image paths only: leading slash, no scheme/host/traversal.
+ *  Shared by img() and import normalization so a crafted payload can never
+ *  store an arbitrary URL into the library. */
+export const isSafeImagePath = (path: string): boolean => {
+  // Reject absolute URLs and data/blob — only allow TMDb relative paths like /abc.jpg
+  if (path.startsWith('data:') || path.startsWith('blob:') || path.startsWith('http://') || path.startsWith('https://')) return false
+  if (path.includes('..') || path.includes('\\') || !path.startsWith('/')) return false
+  // Basic allowlist: / + alphanum + / . - _
+  return /^\/[A-Za-z0-9/_\-.]+$/.test(path)
+}
+
 // Only allow TMDb-relative paths; reject data:, blob:, http, and traversal
 export const img = (path: string | null | undefined, size: 'w185' | 'w342' | 'w500' | 'w780' | 'original' = 'w342') => {
-  if (!path) return null
-  // Reject absolute URLs and data/blob — only allow TMDb relative paths like /abc.jpg
-  if (path.startsWith('data:') || path.startsWith('blob:') || path.startsWith('http://') || path.startsWith('https://')) return null
-  if (path.includes('..') || path.includes('\\') || !path.startsWith('/')) return null
-  // Basic allowlist: / + alphanum + / . - _ 
-  if (!/^\/[A-Za-z0-9/_\-.]+$/.test(path)) return null
+  if (!path || !isSafeImagePath(path)) return null
   return `https://image.tmdb.org/t/p/${size}${path}`
 }
 

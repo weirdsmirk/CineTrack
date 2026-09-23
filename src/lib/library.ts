@@ -1,6 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import type { MediaType, TmdbTitle } from './tmdb'
-import { titleOf, yearOf } from './tmdb'
+import { isSafeImagePath, titleOf, yearOf } from './tmdb'
 import { currentSettings } from './settings'
 
 export type Status = 'watching' | 'planned' | 'watched' | 'dropped'
@@ -80,10 +80,8 @@ export function normalizeEntry(entry: Entry): Entry {
   else entry.title = entry.title.slice(0, MAX_TITLE_LEN)
   if (typeof entry.year !== 'string') entry.year = ''
   else entry.year = entry.year.slice(0, 4)
-  if (typeof entry.poster !== 'string') entry.poster = null
-  else if (entry.poster.length > MAX_POSTER_LEN) entry.poster = null
-  if (typeof entry.backdrop !== 'string') entry.backdrop = null
-  else if (entry.backdrop.length > MAX_BACKDROP_LEN) entry.backdrop = null
+  if (typeof entry.poster !== 'string' || entry.poster.length > MAX_POSTER_LEN || !isSafeImagePath(entry.poster)) entry.poster = null
+  if (typeof entry.backdrop !== 'string' || entry.backdrop.length > MAX_BACKDROP_LEN || !isSafeImagePath(entry.backdrop)) entry.backdrop = null
   if (typeof entry.rating !== 'number' || !Number.isInteger(entry.rating) || entry.rating < 1 || entry.rating > 10) {
     entry.rating = null
   }
@@ -472,10 +470,37 @@ function stableStringify(map: Record<string, Entry>): string {
   return JSON.stringify(keys.map((k) => [k, map[k]]))
 }
 
-export type ImportResult = { merged: Record<string, Entry>; imported: number; skipped: number }
+export type ImportResult = { merged: Record<string, Entry>; imported: number; skipped: number; combined: number }
+
+/** Non-destructive collision merge: the existing record is authoritative for
+ *  everything you set yourself (rating, status, dates, title); the import may
+ *  only fill empty fields and contribute episode/rewatch progress — a crafted
+ *  file can never silently erase curated data. */
+function mergeImportedEntry(existing: Entry, incoming: Entry): Entry {
+  const rewatches = [...new Set([...existing.rewatches, ...incoming.rewatches])]
+    .sort((a, b) => a - b)
+    .slice(-MAX_REWATCHES)
+  return {
+    ...incoming,
+    ...existing,
+    episodes: { ...incoming.episodes, ...existing.episodes },
+    rewatches,
+    rating: existing.rating ?? incoming.rating,
+    favorite: existing.favorite || incoming.favorite,
+    watchedAt: existing.watchedAt ?? incoming.watchedAt,
+    runtime: existing.runtime ?? incoming.runtime,
+    totalEpisodes: existing.totalEpisodes ?? incoming.totalEpisodes,
+    poster: existing.poster ?? incoming.poster,
+    backdrop: existing.backdrop ?? incoming.backdrop,
+    title: existing.title || incoming.title,
+    year: existing.year || incoming.year,
+    addedAt: Math.min(existing.addedAt, incoming.addedAt),
+  }
+}
 
 /** Validate an import payload: throws a user-actionable error, otherwise
- *  returns the merged map plus import/skip counts. */
+ *  returns the merged map plus import/skip/combine counts. Key collisions are
+ *  merged non-destructively (existing data wins) and reported via `combined`. */
 export function parseLibraryImport(text: string, existing: Entry[]): ImportResult {
   if (text.length > 5 * 1024 * 1024) throw new Error('File too large — max 5 MB.')
   let parsed: unknown
@@ -490,6 +515,7 @@ export function parseLibraryImport(text: string, existing: Entry[]): ImportResul
   for (const e of existing) merged[`${e.mediaType}:${e.id}`] = e
   let imported = 0
   let skipped = 0
+  let combined = 0
   for (const raw of parsed) {
     const e = raw as Partial<Entry>
     if (!Number.isSafeInteger(e?.id) || (e?.id as number) <= 0 || (e?.mediaType !== 'movie' && e?.mediaType !== 'tv')) {
@@ -502,13 +528,20 @@ export function parseLibraryImport(text: string, existing: Entry[]): ImportResul
         skipped++
         continue
       }
-      merged[key] = normalizeEntry(e as Entry)
-      imported++
+      const incoming = normalizeEntry(e as Entry)
+      const existingEntry = merged[key]
+      if (existingEntry) {
+        merged[key] = mergeImportedEntry(existingEntry, incoming)
+        combined++
+      } else {
+        merged[key] = incoming
+        imported++
+      }
     } catch {
       skipped++
     }
   }
-  return { merged, imported, skipped }
+  return { merged, imported, skipped, combined }
 }
 
 /* ---------- date helpers ---------- */

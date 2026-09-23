@@ -77,9 +77,12 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
     }
     try {
       const text = await file.text()
-      const { merged, imported, skipped } = parseLibraryImport(text, entries)
+      const { merged, imported, skipped, combined } = parseLibraryImport(text, entries)
       replaceAll(merged)
-      toast(`Imported ${imported} titles${skipped ? `, skipped ${skipped} invalid` : ''}`, skipped ? 'info' : 'success')
+      toast(
+        `Imported ${imported} titles${combined ? `, combined ${combined} with existing (kept your data)` : ''}${skipped ? `, skipped ${skipped} invalid` : ''}`,
+        skipped ? 'info' : 'success',
+      )
     } catch (e) {
       toast(e instanceof Error ? e.message : 'That file could not be read as a CineTrack export.', 'error')
     }
