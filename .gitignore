@@ -15,9 +15,18 @@ logs/
 # Local secrets
 .env
 API.txt
-data/cinetrack.db
-data/*.db
+
+# Databases and library data — local device only, never commit
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+cinetrack-*.json
+data/*
+!data/.gitkeep
+
 coverage/
 .nyc_output/
 .DS_Store
