@@ -80,3 +80,9 @@ CineTrack is made for personal, local use. Your library stays on your machine ap
 ## Privacy
 
 CineTrack collects nothing: no analytics, no tracking, no accounts, and no data leaves your machine except direct requests to the TMDb API for movie and TV metadata. Your entire library lives in the local SQLite database in `data/` and your browser storage.
+
+## License
+
+CineTrack is open source under the [MIT License](LICENSE). You can use, copy, modify, merge, publish, distribute, sublicense, and sell copies of it, including for commercial purposes, as long as the copyright notice and permission notice are kept with the source.
+
+Movie and TV metadata, posters, and stills are provided by [TMDb](https://www.themoviedb.org/). This project is not endorsed by or affiliated with TMDb, and TMDb's own terms apply to its data and imagery.
