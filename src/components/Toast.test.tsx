@@ -20,7 +20,7 @@ describe('ToastProvider', () => {
     vi.useRealTimers()
   })
 
-  it('shows a toast with its kind marker and dismisses after 3s', () => {
+  it('shows a toast with plain text and dismisses after 3s', () => {
     render(
       <ToastProvider>
         <Probe />
