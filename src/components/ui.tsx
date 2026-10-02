@@ -635,8 +635,9 @@ export function useFocusTrap(ref: RefObject<HTMLElement | null>, active = true) 
     const isVisible = (n: HTMLElement) => {
       if (n.hasAttribute('disabled')) return false
       if (n.closest('[hidden]')) return false
-      // getClientRects is layout-dependent (empty under jsdom) — fall back to
-      // computed style so focusable controls are never filtered out in tests.
+      // getClientRects is layout-dependent (it can be empty without a layout
+      // box) — fall back to computed style so hidden controls are still
+      // filtered out.
       if (typeof window !== 'undefined' && typeof n.getClientRects === 'function' && n.getClientRects().length > 0) {
         return true
       }

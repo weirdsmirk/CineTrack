@@ -12,7 +12,6 @@ The app runs locally and keeps my library on my machine. Movie and TV informatio
 * Recharts
 * SQLite with `sql.js`
 * TMDb API
-* Vitest
 
 ## Requirements
 
@@ -61,7 +60,6 @@ npm run start
 ## Useful commands
 
 ```bash
-npm test          # run tests
 npm run typecheck # check TypeScript
 npm run build     # create production build
 npm run start     # run production server
@@ -73,7 +71,6 @@ npm run start     # run production server
 * `src/components/` contains the main app components.
 * `src/lib/` contains the library, TMDb, and settings logic.
 * `data/` contains the local database.
-* `.github/` contains the CI workflow.
 
 CineTrack is made for personal, local use. Your library stays on your machine apart from requests to TMDb for movie and TV metadata.
 
