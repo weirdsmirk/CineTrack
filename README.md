@@ -1,85 +1,56 @@
 # CineTrack
 
-CineTrack is my personal movie and TV tracking app. It helps me keep track of what I want to watch, what I'm watching, what I've finished, ratings, rewatches, and episode progress.
+A personal movie and TV tracking app. Track what you want to watch, what you're
+watching, and what you've finished, with ratings, rewatches, and episode progress.
 
-The app runs locally and keeps my library on my machine. Movie and TV information comes from TMDb.
+It runs locally and keeps your library on your machine. Movie and TV information
+comes from [TMDb](https://www.themoviedb.org/).
 
-## Tech stack
-
-* React and TypeScript
-* Vite
-* Tailwind CSS
-* Recharts
-* SQLite with `sql.js`
-* TMDb API
+Built with React, TypeScript, Vite, Tailwind CSS, Recharts, and SQLite via `sql.js`.
 
 ## Requirements
 
 * Node.js 22.12 or newer
-* npm
 * A TMDb API key
 
 ## Setup
-
-Install the dependencies:
 
 ```bash
 npm ci
 ```
 
-Create a `.env` file in the project root and add your TMDb key:
+Create a `.env` file in the project root:
 
 ```env
 TMDB_KEY=your-key-here
 ```
 
-## Run locally
-
-Start the development server:
+## Usage
 
 ```bash
-npm run dev
-```
-
-The app will run at the address shown in the terminal.
-
-## Production
-
-Build the app:
-
-```bash
-npm run build
-```
-
-Start the local production server:
-
-```bash
-npm run start
-```
-
-## Useful commands
-
-```bash
+npm run dev       # start the dev server
+npm run build     # create a production build
+npm run start     # serve the production build on 127.0.0.1
 npm run typecheck # check TypeScript
-npm run build     # create production build
-npm run start     # run production server
+npm run verify    # typecheck and build
 ```
 
-## Project layout
+Both servers run at the address shown in the terminal.
 
-* `src/` contains the React app and UI.
-* `src/components/` contains the main app components.
-* `src/lib/` contains the library, TMDb, and settings logic.
-* `data/` contains the local database.
+## Layout
 
-CineTrack is made for personal, local use. Your library stays on your machine apart from requests to TMDb for movie and TV metadata.
+* `src/` — the React app
+* `src/components/` — UI components
+* `src/lib/` — library, TMDb, and settings logic
+* `vite.config.ts` — dev and preview server, SQLite persistence, TMDb proxy
+* `data/` — your local database, never committed
 
 ## Privacy
 
-CineTrack collects nothing: no analytics, no tracking, no accounts, and no data leaves your machine except direct requests to the TMDb API for movie and TV metadata. Your entire library lives in the local SQLite database in `data/` and your browser storage.
+No analytics, no tracking, no accounts. Nothing leaves your machine except direct
+requests to TMDb for movie and TV metadata.
 
 ## License
 
-CineTrack is open source under the [MIT License](LICENSE). You can use, copy, modify, merge, publish, distribute, sublicense, and sell copies of it, including for commercial purposes, as long as the copyright notice and permission notice are kept with the source.
-
-Movie and TV metadata, posters, and stills are provided by [TMDb](https://www.themoviedb.org/). This project is not endorsed by or affiliated with TMDb, and TMDb's own terms apply to its data and imagery.
+[MIT](LICENSE). Movie and TV metadata, posters, and stills are provided by
+[TMDb](https://www.themoviedb.org/); TMDb's own terms apply to its data and imagery.
