@@ -439,6 +439,36 @@ function cinetrackSqlitePersistence(): Plugin {
     }
   }
 
+  /** TMDb GET + body with one retry for transport-level faults.
+   *  TMDb is CDN-fronted and a pooled connection can be reset mid-flight; without
+   *  a retry that blip surfaces to the app as a hard 502. These are idempotent
+   *  reads and the 24h cache absorbs the duplicate, so a second attempt is free.
+   *  A redirect is not retried — see `redirect: 'error'` below. */
+  async function fetchUpstream(targetUrl: string, key: string, isV4: boolean): Promise<{ res: Response; body: Buffer }> {
+    for (let attempt = 0; ; attempt++) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
+      try {
+        const res = await fetch(targetUrl, {
+          headers: isV4 ? { Authorization: `Bearer ${key}` } : undefined,
+          signal: controller.signal,
+          // Never replay credentials to whatever host a redirect names. TMDb
+          // does not redirect these paths; if it ever does, fail loudly instead.
+          redirect: 'error',
+        })
+        return { res, body: await readResponseWithLimit(res, 1024 * 1024) }
+      } catch (err) {
+        const e = err as Error
+        // Our own deadline and an oversize body are not transient — only a
+        // socket/DNS/TLS fault is worth exactly one more try.
+        if (attempt > 0 || e.name === 'AbortError' || e.message === 'UPSTREAM_TOO_LARGE') throw err
+      } finally {
+        clearTimeout(timeout)
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+
   // LRU helpers for tmdbCache with both count and byte bounds.
   function evictIfNeeded(cache: Map<string, any>) {
     const now = Date.now()
@@ -600,15 +630,6 @@ function cinetrackSqlitePersistence(): Plugin {
             res.end(JSON.stringify({ error: 'Forbidden origin' }))
             return
           }
-          // Rate limit before any work — socket IP only (X-Forwarded-For is spoofable)
-          const ip = (req.socket as unknown as { remoteAddress?: string })?.remoteAddress || 'local'
-          if (isTmdbRateLimited(ip)) {
-            res.statusCode = 429
-            res.setHeader('Content-Type', 'application/json')
-            res.setHeader('Retry-After', '10')
-            res.end(JSON.stringify({ error: 'Too many requests — please retry after 10s' }))
-            return
-          }
           try {
             const subpathRaw = rawUrl.slice('/api/tmdb'.length) || '/'
             if (!isAllowedTmdbPath(subpathRaw)) {
@@ -660,6 +681,18 @@ function cinetrackSqlitePersistence(): Plugin {
             }
             if (cached && cached.expires <= Date.now()) tmdbCache.delete(subpath)
 
+            // Rate limit only what actually reaches TMDb — a cache HIT above is
+            // free, and charging it let a burst of repeats 429 on data the
+            // server already had. Socket IP only (X-Forwarded-For is spoofable).
+            const ip = (req.socket as unknown as { remoteAddress?: string })?.remoteAddress || 'local'
+            if (isTmdbRateLimited(ip)) {
+              res.statusCode = 429
+              res.setHeader('Content-Type', 'application/json')
+              res.setHeader('Retry-After', '10')
+              res.end(JSON.stringify({ error: 'Too many requests — please retry after 10s' }))
+              return
+            }
+
             let key: string
             try {
               key = getTmdbApiKey()
@@ -680,20 +713,7 @@ function cinetrackSqlitePersistence(): Plugin {
               targetUrl = isV4 ? `${TMDB_BASE}${subpath}` : `${TMDB_BASE}${subpath}${subpath.includes('?') ? '&' : '?'}api_key=${encodeURIComponent(key)}`
             }
 
-            const controller = new AbortController()
-            const timeout = setTimeout(() => controller.abort(), 10000)
-            let upstreamRes: Response
-            let bodyBytes: Buffer
-            try {
-              upstreamRes = await fetch(targetUrl, {
-                headers: isV4 ? { Authorization: `Bearer ${key}` } : undefined,
-                signal: controller.signal,
-                redirect: 'error',
-              })
-              bodyBytes = await readResponseWithLimit(upstreamRes, 1024 * 1024)
-            } finally {
-              clearTimeout(timeout)
-            }
+            const { res: upstreamRes, body: bodyBytes } = await fetchUpstream(targetUrl, key, isV4)
 
             const status = upstreamRes.status
             const rawContentType = upstreamRes.headers.get('content-type') || 'application/json'
@@ -728,7 +748,12 @@ function cinetrackSqlitePersistence(): Plugin {
           } catch (err) {
             const isAbort = (err as Error).name === 'AbortError'
             const tooLarge = (err as Error).message === 'UPSTREAM_TOO_LARGE'
-            server.config.logger.warn(`[cinetrack-tmdb-proxy] ${isAbort ? 'timeout' : (err as Error).message}`)
+            // Keep the socket-level cause in the log — "fetch failed" alone is
+            // what made this undiagnosable from the terminal.
+            const code = (err as { cause?: { code?: string } }).cause?.code
+            server.config.logger.warn(
+              `[cinetrack-tmdb-proxy] ${isAbort ? 'timeout' : `${(err as Error).name}: ${(err as Error).message}${code ? ` (${code})` : ''}`}`,
+            )
             res.statusCode = isAbort ? 504 : 502
             res.setHeader('Content-Type', 'application/json')
             res.end(JSON.stringify({ error: isAbort ? 'TMDb upstream timeout' : tooLarge ? 'Upstream response too large' : 'Failed to contact TMDb upstream' }))

@@ -293,8 +293,10 @@ export async function tmdb<T>(  path: string,
       } catch (e) {
         clearTimeout(timeout)
         const err = e as Error
-        // Retry once on timeout.
-        if (err.name === 'AbortError' && attempt === 0) continue
+        // Retry once, and cover both failure shapes: our own deadline (AbortError)
+        // and a dropped connection (fetch rejects with a TypeError). A killed dev
+        // server or a reset socket was a permanent-looking error until this.
+        if (attempt === 0 && (err.name === 'AbortError' || err instanceof TypeError)) continue
         if (err.name === 'AbortError') throw new Error('TMDb request timed out — please retry')
         throw e
       }
