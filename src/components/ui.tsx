@@ -322,6 +322,82 @@ export function CarouselNav({
   )
 }
 
+/** How long a poster may stay unresolved before we stop believing in it. */
+const ART_GRACE_MS = 6000
+
+/** Poster art that cannot silently disappear.
+ *
+ *  Two failure modes leave a poster slot dark forever: a request that stalls,
+ *  and a load event React never sees because the file was already in the HTTP
+ *  cache and painted before the handler was attached. Neither resolves on its
+ *  own, so the old `imgLoaded` latch just sat at `opacity-0` over a near-black
+ *  plate. This re-reads the element, spends one cache-busted retry on a stall
+ *  or an error, and then reports `failed` so the caller can show the title. */
+export function usePosterArt(url: string | null, srcSet?: string) {
+  const [status, setStatus] = useState<'loading' | 'ready' | 'failed'>(url ? 'loading' : 'failed')
+  const [attempt, setAttempt] = useState(0)
+  const elRef = useRef<HTMLImageElement | null>(null)
+  const retried = useRef(false)
+
+  // A new source starts over, retry budget included.
+  useEffect(() => {
+    retried.current = false
+    setAttempt(0)
+    setStatus(url ? 'loading' : 'failed')
+  }, [url])
+
+  const settle = useCallback(() => {
+    const el = elRef.current
+    if (el && el.complete && el.naturalWidth > 0) setStatus('ready')
+  }, [])
+
+  const retry = useCallback(() => {
+    if (retried.current) {
+      setStatus('failed')
+      return
+    }
+    retried.current = true
+    setAttempt((n) => n + 1)
+    setStatus('loading')
+  }, [])
+
+  // Bound the wait: if nothing has loaded by the grace window the request is
+  // either stalled or was lost, and one fresh attempt beats an eternal shimmer.
+  useEffect(() => {
+    if (!url || status !== 'loading') return
+    const timer = window.setTimeout(() => {
+      if (elRef.current?.complete && elRef.current.naturalWidth > 0) setStatus('ready')
+      else retry()
+    }, ART_GRACE_MS)
+    return () => window.clearTimeout(timer)
+  }, [url, status, attempt, retry])
+
+  // Cache-bust the retry so a half-dead connection cannot hand back the same
+  // stalled response. The CDN ignores the parameter and serves the same file.
+  // A srcset is a comma-separated candidate list, so each URL needs its own.
+  const bust = (value: string) => {
+    if (!attempt) return value
+    return value
+      .split(',')
+      .map((candidate) => {
+        const trimmed = candidate.trim()
+        const url = trimmed.split(/\s+/)[0]
+        const descriptor = trimmed.slice(url.length)
+        return `${url}${url.includes('?') ? '&' : '?'}r=${attempt}${descriptor}`
+      })
+      .join(', ')
+  }
+
+  return {
+    src: url ? bust(url) : null,
+    srcSet: srcSet ? bust(srcSet) : undefined,
+    status,
+    elRef,
+    onLoad: settle,
+    onError: retry,
+  }
+}
+
 export const Poster = memo(function Poster({
   item,
   entry,
@@ -350,22 +426,13 @@ export const Poster = memo(function Poster({
   const community =
     settings.showCommunityScores && item.vote_average > 0 ? item.vote_average.toFixed(1) : null
 
-  const [imgLoaded, setImgLoaded] = useState(false)
-  const [imgError, setImgError] = useState(false)
-  const imgRef = useRef<HTMLImageElement>(null)
-
-  useEffect(() => {
-    setImgLoaded(false)
-    setImgError(false)
-    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
-      setImgLoaded(true)
-    }
-  }, [src])
+  const art = usePosterArt(src, srcSet || undefined)
+  const artPending = art.status === 'loading'
 
   return (
     <div style={style} className="group animate-plate select-none">
       <div className="relative aspect-[2/3] w-full overflow-hidden border border-border bg-muted transition-colors duration-300 group-hover:border-[var(--foreground)]">
-        {src && !imgLoaded && !imgError && (
+        {art.src && artPending && (
           <div className="absolute inset-0 shimmer opacity-70" aria-hidden="true" />
         )}
         <button
@@ -374,24 +441,21 @@ export const Poster = memo(function Poster({
           aria-label={`Open ${titleOf(item)}`}
           className="absolute inset-0 h-full w-full cursor-pointer press"
         >
-          {src && !imgError ? (
+          {art.src && art.status !== 'failed' ? (
             <img
-              ref={imgRef}
-              src={src}
-              srcSet={srcSet}
+              ref={art.elRef}
+              src={art.src}
+              srcSet={art.srcSet}
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
               alt={`Poster for ${titleOf(item)}`}
               loading="lazy"
               decoding="async"
               width={342}
               height={513}
-              onLoad={() => setImgLoaded(true)}
-              onError={() => {
-                setImgError(true)
-                setImgLoaded(false)
-              }}
+              onLoad={art.onLoad}
+              onError={art.onError}
               className={`h-full w-full object-cover transition-all duration-500 ease-out ${
-                imgLoaded ? 'opacity-100' : 'opacity-0'
+                art.status === 'ready' ? 'opacity-100' : 'opacity-0'
               } ${
                 settings.posterMotion ? 'group-hover:scale-[1.03]' : 'group-hover:opacity-85'
               }`}

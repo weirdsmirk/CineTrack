@@ -23,7 +23,7 @@ import {
   type Status,
 } from '../lib/library'
 import { useSettings } from '../lib/settings'
-import { CarouselNav, ConfirmDialog, Spinner, STATUS_BADGE, STATUS_INACTIVE, STATUS_STYLE, useBodyScrollLock, useFocusTrap, useTimedTooltip } from './ui'
+import { CarouselNav, ConfirmDialog, Spinner, STATUS_BADGE, STATUS_INACTIVE, STATUS_STYLE, useBodyScrollLock, useFocusTrap, usePosterArt, useTimedTooltip } from './ui'
 import { useToast } from './Toast'
 import CastDetail from './CastDetail'
 
@@ -174,6 +174,14 @@ export default function TitleDetail({
   } as TmdbTitle) : null)
   const cast = data?.credits?.cast ?? []
 
+  // Hero plate. The stored poster wins over the fetched one so a shelf that has
+  // art never loses it to a detail response that came back bare.
+  const heroPath = entry?.poster ?? source?.poster_path ?? null
+  const heroArt = usePosterArt(
+    img(heroPath, 'w342'),
+    `${img(heroPath, 'w185')} 185w, ${img(heroPath, 'w342')} 342w, ${img(heroPath, 'w500')} 500w`,
+  )
+
   const add = (patch: Record<string, unknown> = {}) => {
     const runtime = data ? (type === 'movie' ? (data.runtime ?? null) : (data.episode_run_time?.[0] ?? null)) : null
     upsert(type, id, { runtime, totalEpisodes: type === 'tv' ? (data?.number_of_episodes ?? null) : null, ...patch }, source ?? undefined)
@@ -291,17 +299,28 @@ export default function TitleDetail({
             )}
             <div className="grid gap-8 px-6 py-7 lg:grid-cols-[190px_1fr]">
               <div>
-                {img(entry?.poster ?? source.poster_path, 'w342') && (
+                {heroArt.status === 'ready' || heroArt.status === 'loading' ? (
                   <img
-                    src={img(entry?.poster ?? source.poster_path, 'w342')!}
-                    srcSet={`${img(entry?.poster ?? source.poster_path, 'w185')} 185w, ${img(entry?.poster ?? source.poster_path, 'w342')} 342w, ${img(entry?.poster ?? source.poster_path, 'w500')} 500w`}
+                    ref={heroArt.elRef}
+                    src={heroArt.src!}
+                    srcSet={heroArt.srcSet}
                     sizes="(max-width: 1024px) 190px, 190px"
                     alt={`Poster for ${entry?.title || titleOf(source)}`}
                     width={342}
                     height={513}
                     decoding="async"
-                    className="animate-plate w-full border border-border bg-muted"
+                    onLoad={heroArt.onLoad}
+                    onError={heroArt.onError}
+                    className={`animate-plate w-full border border-border bg-muted ${
+                      heroArt.status === 'loading' ? 'opacity-0' : 'opacity-100'
+                    }`}
                   />
+                ) : (
+                  // No art, and art that would not load, look the same — and both
+                  // name the title. An empty plate read as a missing poster.
+                  <div className="flex aspect-[2/3] w-full items-center justify-center border border-border bg-muted p-3 text-center font-display text-lg text-muted-foreground">
+                    {entry?.title || titleOf(source)}
+                  </div>
                 )}
               </div>
 
