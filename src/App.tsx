@@ -25,12 +25,17 @@ function navModifier(): string {
   return /Mac|iPhone|iPad|Macintosh/.test(navigator.userAgent ?? '') ? '⌥' : 'Alt'
 }
 
+/** Route encoded in the URL fragment, or null when there isn't one.
+ *  `#library` is what the app writes, but `#/library` is what people type and
+ *  what older bookmarks hold — both name the same page. */
+function routeFromHash(): Page | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.location.hash.replace(/^#\/?/, '')
+  return raw === 'discover' || raw === 'library' || raw === 'home' ? (raw as Page) : null
+}
+
 export default function App() {
-  const [page, setPage] = useState<Page>(() => {
-    const hash = typeof window !== 'undefined' ? window.location.hash.slice(1) : ''
-    if (hash === 'discover' || hash === 'library' || hash === 'home') return hash as Page
-    return 'home'
-  })
+  const [page, setPage] = useState<Page>(() => routeFromHash() ?? 'home')
   const [info, setInfo] = useState<InfoSlug | null>(null)
   const [open, setOpen] = useState<{ type: MediaType; id: number; seed?: TmdbTitle } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -47,21 +52,29 @@ export default function App() {
     setPage(p)
   }, [])
 
-  useEffect(() => {
-    const h = page === 'home' ? '' : `#${page}`
+  /** Keep the address bar honest: it must never claim a page we aren't showing. */
+  const syncHash = useCallback((p: Page) => {
+    const h = p === 'home' ? '' : `#${p}`
     if (typeof window !== 'undefined' && window.location.hash !== h) {
       history.replaceState(null, '', `${window.location.pathname}${window.location.search}${h}`)
     }
-  }, [page])
+  }, [])
+
+  useEffect(() => {
+    syncHash(page)
+  }, [page, syncHash])
 
   useEffect(() => {
     const onHash = () => {
-      const hash = window.location.hash.slice(1) as Page
-      if (hash === 'discover' || hash === 'library' || hash === 'home') setPage(hash)
+      const next = routeFromHash()
+      // An unrecognised fragment routes nowhere: hold the current page and put
+      // the URL back rather than leaving it stuck on something meaningless.
+      if (next) setPage(next)
+      else syncHash(page)
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
-  }, [])
+  }, [page, syncHash])
 
   // Alt+1/2/3 jumps between sections, Alt+, opens settings. Physical codes,
   // not e.key: macOS Option+digit types ¡™£ instead of the digit.
