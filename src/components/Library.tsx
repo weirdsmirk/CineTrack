@@ -88,6 +88,8 @@ export default function Library({
       <SectionHead
         title="Library"
         note="Your complete collection of movies and series, with personal ratings and viewing state."
+        fullBleed
+        titleClassName="text-[44px] sm:text-[52px]"
         right={
           <SearchInput value={q} onChange={setQ} className="w-56 md:w-72" />
         }

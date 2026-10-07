@@ -165,15 +165,22 @@ export function StatusBadge({ status }: { status: Status }) {
   )
 }
 
-export function SectionHead({ index, title, note, right, rule = true }: { index?: string; title: string; note?: string; right?: ReactNode; rule?: boolean }) {
+export function SectionHead({ index, title, note, right, rule = true, fullBleed = false, titleClassName }: { index?: string; title: string; note?: string; right?: ReactNode; rule?: boolean; fullBleed?: boolean; titleClassName?: string }) {
   return (
     <div className={`relative z-30 flex items-end justify-between gap-6 ${rule ? 'mb-6 pb-3' : 'mb-4'}`}>
       {/* The rule beneath the head draws itself in rather than appearing. */}
-      {rule && <span aria-hidden className="animate-rule absolute inset-x-0 bottom-0 h-px bg-border" />}
+      {rule && (
+        <span
+          aria-hidden
+          className={fullBleed
+            ? 'animate-rule absolute bottom-0 left-1/2 h-px w-screen -translate-x-1/2 bg-border [transform-origin:center]'
+            : 'animate-rule absolute inset-x-0 bottom-0 h-px bg-border'}
+        />
+      )}
       <div className="flex items-baseline gap-4 min-w-0">
         {index && <span className="animate-fade font-sans text-[11px] tracking-[0.2em] text-[var(--accent)]">{index}</span>}
         <div className="min-w-0">
-          <h2 className="font-display text-[34px] sm:text-[38px] italic leading-none tracking-tight">{title}</h2>
+          <h2 className={`font-display text-[34px] sm:text-[38px] italic leading-none tracking-tight ${titleClassName ?? ''}`}>{title}</h2>
           {note && <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground whitespace-normal md:whitespace-nowrap">{note}</p>}
         </div>
       </div>
