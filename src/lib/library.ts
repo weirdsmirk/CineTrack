@@ -357,6 +357,24 @@ export function useLibrary(subscribeToStore = true) {
     commit(next)
   }, [])
 
+  /**
+   * Completion stamp for a series, so finishing it by checking the last episode
+   * records a date the way the status picker always has. The latest episode
+   * timestamp is the real finishing day, so a backfilled log dates correctly;
+   * a hand-entered date on an already-watched show is left alone. Only a
+   * complete show carries a date — unchecking an episode clears it again.
+   */
+  function completionStamp(
+    episodes: Record<string, number>,
+    finished: boolean,
+    previous: number | null,
+    wasWatched: boolean,
+  ): number | null {
+    if (!finished) return null
+    if (wasWatched && previous != null) return previous
+    return maxTime(Object.values(episodes)) ?? Date.now()
+  }
+
   /** `at` backdates the log; defaults to now. Ignores non-integer season/episodes. */
   const toggleEpisode = useCallback((id: number, s: number, e: number, at?: number) => {
     if (!Number.isInteger(id) || !Number.isInteger(s) || !Number.isInteger(e) || s < 0 || e < 0) return
@@ -372,7 +390,8 @@ export function useLibrary(subscribeToStore = true) {
     const finished = currentSettings().autoCompleteSeries && !!entry.totalEpisodes && watched >= entry.totalEpisodes
     // An empty log is never "watched" — fall back to planned (dropped stays dropped).
     const status: Status = finished ? 'watched' : watched > 0 ? 'watching' : entry.status === 'dropped' ? 'dropped' : 'planned'
-    commit({ ...cache, [key]: { ...entry, episodes, status } })
+    const watchedAt = completionStamp(episodes, finished, entry.watchedAt, entry.status === 'watched')
+    commit({ ...cache, [key]: { ...entry, episodes, status, watchedAt } })
   }, [])
 
   const setSeasonWatched = useCallback(
@@ -391,7 +410,8 @@ export function useLibrary(subscribeToStore = true) {
     const finished = currentSettings().autoCompleteSeries && !!entry.totalEpisodes && count >= entry.totalEpisodes
     const status: Status =
       finished ? 'watched' : count > 0 ? 'watching' : entry.status === 'dropped' ? 'dropped' : 'planned'
-    commit({ ...cache, [key]: { ...entry, episodes, status } })
+    const watchedAt = completionStamp(episodes, finished, entry.watchedAt, entry.status === 'watched')
+    commit({ ...cache, [key]: { ...entry, episodes, status, watchedAt } })
     },
     [],
   )

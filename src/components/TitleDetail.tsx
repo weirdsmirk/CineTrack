@@ -1617,6 +1617,14 @@ function RewatchModal({
                     }}
                     className="h-8 flex-1 border border-border bg-background px-2 font-sans text-[11px] outline-none focus:border-[var(--primary)]"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setConfirmIndex(i)}
+                    aria-label={`Delete rewatch ${i + 1} on ${toDateInput(ts)}`}
+                    className="press flex h-8 w-8 shrink-0 items-center justify-center border border-border text-muted-foreground hover:border-[var(--destructive)] hover:text-[var(--destructive)]"
+                  >
+                    <TrashIcon />
+                  </button>
                 </li>
               ))}
             </ul>
