@@ -135,19 +135,21 @@ export default function App() {
                   page === n.id && !info ? 'text-foreground' : 'text-secondary-foreground hover:text-foreground'
                 }`}
               >
-                {n.label}
+                <span className="relative">
+                  {n.label}
+                  <span
+                    aria-hidden
+                    className={`absolute inset-x-0 bottom-0 h-[2px] origin-left bg-[var(--primary)] transition-transform duration-300 ease-out ${
+                      page === n.id && !info ? 'scale-x-100' : 'scale-x-0'
+                    }`}
+                  />
+                </span>
                 {settings.showNavHints && (
                   <span aria-hidden className="font-sans text-[10px] tracking-[0.1em] text-muted-foreground">
                     {navModifier()}
                     {n.key}
                   </span>
                 )}
-                <span
-                  aria-hidden
-                  className={`absolute inset-x-3 bottom-0 h-[2px] origin-left bg-[var(--primary)] transition-transform duration-300 ease-out ${
-                    page === n.id && !info ? 'scale-x-100' : 'scale-x-0'
-                  }`}
-                />
               </button>
             ))}
           </nav>
