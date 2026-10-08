@@ -329,18 +329,28 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
             <div>
               <span className="block text-[13px]">Metadata language</span>
               <span className="rule-label mt-0.5 block">Titles and synopses served by TMDb</span>
-              <select
-                value={settings.metadataLanguage}
-                onChange={(e) => set('metadataLanguage', e.target.value)}
-                aria-label="Metadata language"
-                className="mt-2 h-9 w-full cursor-pointer border border-border bg-card px-2 text-[13px] text-foreground outline-none focus:border-[var(--primary)]"
-              >
-                {LANGUAGES.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.label}
-                  </option>
-                ))}
-              </select>
+              <div className="relative mt-2">
+                <select
+                  value={settings.metadataLanguage}
+                  onChange={(e) => set('metadataLanguage', e.target.value)}
+                  aria-label="Metadata language"
+                  className="h-9 w-full cursor-pointer appearance-none border border-border bg-card px-2 pr-9 text-[13px] text-foreground outline-none focus:border-[var(--primary)]"
+                >
+                  {LANGUAGES.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.label}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground"
+                >
+                  <path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
             </div>
           </Group>
 
