@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LANGUAGES, THEMES, useSettings } from '../lib/settings'
+import { DEFAULT_ARCHIVE_NAME, LANGUAGES, THEMES, useSettings } from '../lib/settings'
 import { minutesWatched, parseLibraryImport, useLibrary, watchedCount } from '../lib/library'
 import { ConfirmDialog, Chip, SETTINGS_PANEL_ID, useBodyScrollLock, useFocusTrap } from './ui'
 import { useToast } from './Toast'
@@ -174,7 +174,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
           <Group title="Identity" note="Name the archive and its chrome.">
             <div>
               <span className="block text-[13px]">Archive name</span>
-              <span className="rule-label mt-0.5 block">Shown in the home masthead</span>
+              <span className="rule-label mt-0.5 block">Shown in the home masthead · 48 characters max</span>
               <input
                 value={settings.archiveName}
                 onChange={(e) => set('archiveName', e.target.value)}
@@ -182,9 +182,18 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                 spellCheck={false}
                 autoComplete="off"
                 aria-label="Archive name"
+                placeholder="Enter an archive name"
                 className="mt-2 h-9 w-full border border-border bg-card px-3 font-display text-[16px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[var(--primary)]"
-                placeholder="The Standing Collection"
               />
+              {settings.archiveName !== DEFAULT_ARCHIVE_NAME && (
+                <button
+                  type="button"
+                  onClick={() => set('archiveName', DEFAULT_ARCHIVE_NAME)}
+                  className="press mt-2 font-sans text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                >
+                  Reset to default
+                </button>
+              )}
             </div>
             <Toggle
               label="Shortcut hints"

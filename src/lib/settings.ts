@@ -95,7 +95,7 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
   out.showNavHints = s.showNavHints !== false
   out.openAfterAdd = !!s.openAfterAdd
   out.showCommunityScores = !!s.showCommunityScores
-  if (typeof s.archiveName === 'string' && s.archiveName.trim()) {
+  if (typeof s.archiveName === 'string') {
     out.archiveName = s.archiveName.trim().slice(0, 48)
   }
   if ((STATUS_IDS as readonly string[]).includes(s.defaultStatus as string)) {
