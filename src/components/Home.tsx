@@ -122,7 +122,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
         )}
       </section>
 
-      <section className="grid gap-12 lg:grid-cols-[1.4fr_1fr]">
+      <section className="grid gap-12 md:grid-cols-[1.2fr_1fr]">
         <div>
           <SectionHead title="Recently watched" note="A running ledger of the last entries marked seen." rule={false} />
           {activity.length === 0 ? (
