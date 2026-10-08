@@ -92,6 +92,10 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
   const hours = Math.round(minutes / 60)
   const days = (minutes / 1440).toFixed(1)
   const archiveNameLength = Array.from(settings.archiveName).length
+  const archiveWords = settings.archiveName.trim().split(/\s+/).filter(Boolean)
+  const italicWordIndex = settings.archiveItalicWordIndex < 0
+    ? archiveWords.length - 1
+    : Math.min(settings.archiveItalicWordIndex, archiveWords.length - 1)
 
   return (
     <>
@@ -200,11 +204,44 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                 placeholder="Enter an archive name"
                 className="mt-2 h-10 w-full border border-border bg-card px-3 font-display text-[16px] text-foreground outline-none placeholder:font-sans placeholder:text-[13px] placeholder:text-muted-foreground focus:border-[var(--primary)] focus-visible:ring-1 focus-visible:ring-[var(--primary)]"
               />
+              {archiveWords.length > 1 && (
+                <div className="mt-3">
+                  <label htmlFor="archive-italic-word" className="block text-[13px]">Italic word</label>
+                  <span id="archive-italic-word-hint" className="rule-label mt-0.5 block">Choose the highlighted word in the masthead</span>
+                  <div className="relative mt-2">
+                    <select
+                      id="archive-italic-word"
+                      value={italicWordIndex}
+                      onChange={(e) => {
+                        const index = Number(e.target.value)
+                        set('archiveItalicWordIndex', index === archiveWords.length - 1 ? -1 : index)
+                      }}
+                      aria-describedby="archive-italic-word-hint"
+                      className="h-10 w-full cursor-pointer appearance-none border border-border bg-card px-3 pr-9 text-[13px] text-foreground outline-none focus:border-[var(--primary)] focus-visible:ring-1 focus-visible:ring-[var(--primary)]"
+                    >
+                      {archiveWords.map((word, index) => (
+                        <option key={`${index}-${word}`} value={index}>{index + 1}. {word}</option>
+                      ))}
+                    </select>
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground"
+                    >
+                      <path d="m7 10 5 5 5-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                </div>
+              )}
               {settings.archiveName !== DEFAULT_ARCHIVE_NAME && (
                 <div className="mt-1 flex justify-end">
                   <button
                     type="button"
-                    onClick={() => set('archiveName', DEFAULT_ARCHIVE_NAME)}
+                    onClick={() => {
+                      set('archiveName', DEFAULT_ARCHIVE_NAME)
+                      set('archiveItalicWordIndex', -1)
+                    }}
                     className="press min-h-8 px-1 font-sans text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-1 focus-visible:outline-[var(--primary)]"
                   >
                     Reset to default

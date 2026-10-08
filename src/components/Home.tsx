@@ -52,10 +52,10 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
     <div className="space-y-16">
       <section>
         <div className="border-b border-border pb-6 -mx-4 lg:-mx-6 px-4 lg:px-6">
-          
-          {/* Masthead sets in two beats: roman first, then the italic. */}
-          <h1 className="mt-3 max-w-[14ch] font-display text-[clamp(48px,7vw,92px)] leading-[0.95] tracking-tight">
-            <MastheadName name={settings.archiveName} />
+
+          {/* Masthead keeps the full archive name to two balanced lines. */}
+          <h1 className="mt-3 w-full max-w-full font-display text-[clamp(22px,6.2vw,92px)] leading-[0.95] tracking-tight">
+            <MastheadName name={settings.archiveName} italicWordIndex={settings.archiveItalicWordIndex} />
           </h1>
         </div>
         <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">

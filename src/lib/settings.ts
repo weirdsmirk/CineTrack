@@ -41,6 +41,7 @@ export type Settings = {
   shelfColumns: number
   includeAdult: boolean
   archiveName: string
+  archiveItalicWordIndex: number
   showNavHints: boolean
   defaultStatus: (typeof STATUS_IDS)[number]
   openAfterAdd: boolean
@@ -64,6 +65,7 @@ const DEFAULTS: Settings = {
   shelfColumns: 6,
   includeAdult: false,
   archiveName: DEFAULT_ARCHIVE_NAME,
+  archiveItalicWordIndex: -1,
   showNavHints: true,
   defaultStatus: 'planned',
   openAfterAdd: false,
@@ -99,6 +101,11 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
   if (typeof s.archiveName === 'string') {
     out.archiveName = Array.from(s.archiveName).slice(0, ARCHIVE_NAME_MAX_LENGTH).join('')
   }
+  if (typeof s.archiveItalicWordIndex === 'number' && Number.isInteger(s.archiveItalicWordIndex) && s.archiveItalicWordIndex >= -1) {
+    out.archiveItalicWordIndex = Math.min(s.archiveItalicWordIndex, ARCHIVE_NAME_MAX_LENGTH - 1)
+  }
+  const archiveWordCount = out.archiveName.trim().split(/\s+/).filter(Boolean).length
+  if (out.archiveItalicWordIndex >= archiveWordCount) out.archiveItalicWordIndex = archiveWordCount - 1
   if ((STATUS_IDS as readonly string[]).includes(s.defaultStatus as string)) {
     out.defaultStatus = s.defaultStatus as Settings['defaultStatus']
   }
