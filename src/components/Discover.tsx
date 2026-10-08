@@ -659,9 +659,8 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
     <div className="space-y-8">
       <SectionHead
         title="Discover"
-        note="Query the TMDb catalogue, then accession anything worth keeping."
         fullBleed
-        titleClassName="text-[44px] sm:text-[52px]"
+        titleClassName="text-[56px] sm:text-[64px]"
         right={<SearchInput value={query} onChange={setQuery} className="w-56 md:w-72" />}
       />
 
