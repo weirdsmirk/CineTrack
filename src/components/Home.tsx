@@ -6,6 +6,46 @@ import { Empty, SectionHead, Stat } from './ui'
 import MastheadName from './MastheadName'
 
 const MonthlyChart = lazy(() => import('./MonthlyChart'))
+const TITLE_STOP_WORDS = new Set(['a', 'an', 'and', 'of', 'the'])
+
+// ponytail: title tokens approximate franchise membership; use collection IDs if the library stores them.
+function titleWords(title: string) {
+  return [...new Set((title.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter((word) => !TITLE_STOP_WORDS.has(word)))]
+}
+
+function sharesTitleFamily(a: string, b: string) {
+  const aWords = titleWords(a)
+  const bWords = titleWords(b)
+  if (!aWords.length || !bWords.length) return false
+
+  const smaller = aWords.length <= bWords.length ? aWords : bWords
+  const larger = aWords.length <= bWords.length ? bWords : aWords
+  const shared = smaller.filter((word) => larger.includes(word))
+  const exactMatch = aWords.length === bWords.length && shared.length === aWords.length
+  return exactMatch || (shared.length >= 2 && shared.length / smaller.length >= 0.4) ||
+    (shared.length === 1 && smaller.length === 1 && smaller[0].length >= 6)
+}
+
+function pickDiverse<T extends { title: string }>(items: T[], count: number) {
+  const shuffled = [...items]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+
+  const picks: T[] = []
+  for (const item of shuffled) {
+    if (picks.every((pick) => !sharesTitleFamily(pick.title, item.title))) picks.push(item)
+    if (picks.length === count) return picks
+  }
+
+  // If the shelf is mostly one franchise, fill the remaining slots anyway.
+  for (const item of shuffled) {
+    if (!picks.includes(item)) picks.push(item)
+    if (picks.length === count) break
+  }
+  return picks
+}
 
 export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void }) {
   const { entries } = useLibrary()
@@ -39,13 +79,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
 
   const [shuffleKey, setShuffleKey] = useState(0)
   const suggestions = useMemo(() => {
-    if (stats.planned.length === 0) return []
-    const arr = [...stats.planned]
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[arr[i], arr[j]] = [arr[j], arr[i]]
-    }
-    return arr.slice(0, 3)
+    return pickDiverse(stats.planned, 3)
   }, [stats.planned, shuffleKey])
 
   return (
