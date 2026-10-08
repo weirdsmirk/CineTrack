@@ -58,9 +58,8 @@ function About() {
       </p>
       <H>Where your data lives</H>
       <p>
-        Everything you record is stored locally in your browser and mirrored to the on-disk SQLite database at <code>data/cinetrack.db</code>
-        when the local server is available. There is no remote account or third-party server holding your library — your data travels
-        with the project wherever you copy or clone it. You can also export your collection as a JSON or SQLite (.db) file at any time from Settings.
+        Everything you record is stored locally on your device. There is no remote account or third-party server holding your library.
+        You can export your collection as a JSON file from Settings.
       </p>
     </>
   )
@@ -72,11 +71,10 @@ function Privacy() {
       <p>
         CineTrack is built to collect as little as possible. This policy explains what data exists and where it is kept.
       </p>
-      <H>Data stored in SQLite</H>
+      <H>Data stored locally</H>
       <p>
-        Your library — titles, ratings, watch dates, episode progress, rewatches — and your preferences are persisted in
-        the local SQLite database (<code>data/cinetrack.db</code>) on your own device. This data never leaves your machine
-        unless you explicitly export or move the database file.
+        Your library — titles, ratings, watch dates, episode progress, rewatches — and your preferences stay on your own device.
+        This data never leaves your machine unless you explicitly export it.
       </p>
       <H>Third-party requests</H>
       <p>
@@ -85,11 +83,10 @@ function Privacy() {
         third-party trackers.
       </p>
       <H>Cookies</H>
-      <p>CineTrack sets no cookies. State is persisted in your local SQLite database.</p>
+      <p>CineTrack sets no cookies. Your library and preferences are stored locally on your device.</p>
       <H>Your control</H>
       <p>
-        You may export or erase your entire library from Settings at any time, or directly manage the <code>data/cinetrack.db</code>
-        SQLite file.
+        You may export or erase your entire library from Settings at any time.
       </p>
     </>
   )

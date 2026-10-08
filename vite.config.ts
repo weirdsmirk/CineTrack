@@ -372,7 +372,7 @@ function cinetrackSqlitePersistence(): Plugin {
       try {
         const dir = path.dirname(DB_PATH)
         for (const f of fs.readdirSync(dir)) {
-          if (!f.startsWith('cinetrack.db.tmp.') && !f.startsWith('cinetrack.db.export.tmp.')) continue
+          if (!f.startsWith('cinetrack.db.tmp.')) continue
           const full = path.join(dir, f)
           try {
             const st = fs.statSync(full)
@@ -604,8 +604,7 @@ function cinetrackSqlitePersistence(): Plugin {
         }
 
         // Enforce same-origin for __data endpoints (CSRF protection).
-        // Applies to reads too: db-export dumps the whole library, so a
-        // cross-site top-level navigation must not be able to pull it.
+        // Cross-site reads must not be able to inspect private collection data.
         const isDataEndpoint = pathname.startsWith('/__data/')
         if (isDataEndpoint) {
           if (!checkSameOrigin()) {
@@ -1023,59 +1022,6 @@ function cinetrackSqlitePersistence(): Plugin {
             server.config.logger.warn(`[cinetrack-sqlite] settings: ${(err as Error).message}`)
             res.statusCode = 500
             res.end(JSON.stringify({ error: 'Internal error' }))
-            return
-          }
-        }
-
-        // 4. Raw DB export endpoint
-        if (pathname === '/__data/db-export' && (req.method === 'GET' || req.method === 'HEAD')) {
-          try {
-            await writeChain
-            if (!fs.existsSync(DB_PATH)) {
-              const initDb = await openDb()
-              persist(initDb)
-              initDb.close()
-            }
-            // Copy to a uniquely-named tmp to avoid torn reads and concurrent-export races.
-            const tmpExport = `${DB_PATH}.export.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`
-            try {
-              const fd = fs.openSync(tmpExport, 'wx', 0o600)
-              fs.closeSync(fd)
-              fs.copyFileSync(DB_PATH, tmpExport)
-              fs.chmodSync(tmpExport, 0o600)
-            } catch {
-              try { if (fs.existsSync(tmpExport)) fs.unlinkSync(tmpExport) } catch {}
-            }
-            const stat = fs.statSync(fs.existsSync(tmpExport) ? tmpExport : DB_PATH)
-            res.setHeader('Content-Type', 'application/vnd.sqlite3')
-            res.setHeader('Content-Disposition', 'attachment; filename="cinetrack.db"')
-            res.setHeader('Content-Length', String(stat.size))
-            res.setHeader('Cache-Control', 'private, no-store')
-            if (req.method === 'HEAD') {
-              try { if (fs.existsSync(tmpExport)) fs.unlinkSync(tmpExport) } catch {}
-              res.end()
-              return
-            }
-            const stream = fs.createReadStream(fs.existsSync(tmpExport) ? tmpExport : DB_PATH)
-            stream.on('error', (e) => {
-              server.config.logger.warn(`[cinetrack-sqlite] export stream: ${(e as Error).message}`)
-              if (!res.headersSent) {
-                res.statusCode = 500
-                res.end(JSON.stringify({ error: 'Export failed' }))
-              } else {
-                res.destroy()
-              }
-            })
-            stream.on('close', () => {
-              try { if (fs.existsSync(tmpExport)) fs.unlinkSync(tmpExport) } catch {}
-            })
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ;(stream as any).pipe(res)
-            return
-          } catch (err) {
-            server.config.logger.warn(`[cinetrack-sqlite] export: ${(err as Error).message}`)
-            res.statusCode = 500
-            res.end(JSON.stringify({ error: 'Export failed' }))
             return
           }
         }

@@ -241,10 +241,9 @@ function Footer({
         <div>
           <Logo size={24} markSize={40} />
           <p className="mt-4 max-w-[36ch] text-[13px] leading-relaxed text-muted-foreground">
-            A personal moving-image archive for the films and series you watch — catalogued, tracked, and stored in
-            your local SQLite database.
+            A personal moving-image archive for the films and series you watch — catalogued, tracked, and stored locally.
           </p>
-          <p className="rule-label mt-4">{entries} titles held · Stored locally in SQLite and browser storage</p>
+          <p className="rule-label mt-4">{entries} titles held · Stored on this device</p>
         </div>
 
         <nav className="flex flex-col gap-2.5">

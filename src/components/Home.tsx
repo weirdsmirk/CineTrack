@@ -228,7 +228,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
           <a href="#discover" className="font-medium text-foreground underline underline-offset-4 hover:text-[var(--primary)]">
             Discover
           </a>{' '}
-          to search TMDb and add your first title — everything is persisted to SQLite (<code>data/cinetrack.db</code>).
+          to search TMDb and add your first title. Your archive is stored locally on this device.
         </p>
       )}
     </div>

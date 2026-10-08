@@ -63,13 +63,6 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
     }
   }
 
-  const exportSqliteDb = () => {
-    const a = document.createElement('a')
-    a.href = '/__data/db-export'
-    a.download = 'cinetrack.db'
-    a.click()
-  }
-
   const importLibrary = async (file: File) => {
     if (file.size > 5 * 1024 * 1024) {
       toast('File too large — max 5 MB.', 'error')
@@ -370,23 +363,6 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                   <dt className="rule-label text-[9px]">Days</dt>
                   <dd className="mt-1 font-display text-[26px] leading-none tabular-nums text-foreground">{days}</dd>
                 </div>
-              </div>
-            </div>
-
-            <div className="pt-2">
-              <div className="rule-label mb-2 text-[10px]">Database Engine</div>
-              <div className="flex items-center justify-between gap-3 border border-border bg-card p-3">
-                <div className="min-w-0">
-                  <div className="font-sans text-[11px] font-medium text-foreground">data/cinetrack.db</div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">Local SQLite storage</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={exportSqliteDb}
-                  className="press shrink-0 border border-border bg-background px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] text-foreground hover:border-[var(--foreground)] hover:bg-card"
-                >
-                  Export .db
-                </button>
               </div>
             </div>
 
