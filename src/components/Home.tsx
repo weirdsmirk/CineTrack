@@ -170,7 +170,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
                     className="group flex w-full items-baseline gap-4 py-3 text-left transition-colors duration-200 hover:text-[var(--primary)]"
                   >
                     <span className="w-16 shrink-0 font-sans text-[10px] tabular-nums text-[var(--accent)]">{a.label}</span>
-                    <span className="min-w-0 flex-1 truncate font-display text-[19px] transition-transform duration-300 group-hover:translate-x-1">
+                    <span className="min-w-0 flex-1 truncate font-sans text-[19px] transition-transform duration-300 group-hover:translate-x-1">
                       {a.entry.title}
                     </span>
                     <span className="shrink-0 font-sans text-[10px] tabular-nums text-muted-foreground">
@@ -225,7 +225,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
                     )}
                   </div>
                   <span className="min-w-0 flex-1 py-1">
-                    <span className="block truncate font-display text-[19px] leading-tight group-hover:text-[var(--primary)]">{e.title}</span>
+                    <span className="block truncate font-sans text-[19px] leading-tight group-hover:text-[var(--primary)]">{e.title}</span>
                     <span className="rule-label mt-1 block">
                       {e.mediaType === 'movie' ? 'Movie' : 'TV'} · {e.year || '—'}
                     </span>
