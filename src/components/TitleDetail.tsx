@@ -346,7 +346,7 @@ export default function TitleDetail({
                     </span>
                   ))}
                 </p>
-                <p className="mt-4 line-clamp-4 max-w-prose text-[14px] leading-relaxed text-secondary-foreground">
+                <p className="mt-4 max-w-prose text-[14px] leading-relaxed text-secondary-foreground">
                   {source.overview || 'No synopsis on file.'}
                 </p>
                 {entry?.note && (
