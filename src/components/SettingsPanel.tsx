@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { DEFAULT_ARCHIVE_NAME, LANGUAGES, THEMES, useSettings } from '../lib/settings'
+import { ARCHIVE_NAME_MAX_LENGTH, DEFAULT_ARCHIVE_NAME, LANGUAGES, THEMES, useSettings } from '../lib/settings'
 import { minutesWatched, parseLibraryImport, useLibrary, watchedCount } from '../lib/library'
 import { ConfirmDialog, Chip, SETTINGS_PANEL_ID, useBodyScrollLock, useFocusTrap } from './ui'
 import { useToast } from './Toast'
+import MastheadName from './MastheadName'
 
 export default function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { settings, set } = useSettings()
@@ -91,6 +92,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
   const minutes = minutesWatched(entries)
   const hours = Math.round(minutes / 60)
   const days = (minutes / 1440).toFixed(1)
+  const archiveNameLength = Array.from(settings.archiveName).length
 
   return (
     <>
@@ -173,27 +175,53 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
 
           <Group title="Identity" note="Name the archive and its chrome.">
             <div>
-              <span className="block text-[13px]">Archive name</span>
-              <span className="rule-label mt-0.5 block">Shown in the home masthead · 48 characters max</span>
+              <label htmlFor="archive-name" className="block text-[13px]">Archive name</label>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <span id="archive-name-hint" className="rule-label">Shown in the home masthead</span>
+                <span
+                  id="archive-name-count"
+                  aria-label={`${archiveNameLength} of ${ARCHIVE_NAME_MAX_LENGTH} characters`}
+                  className="font-sans text-[10px] tabular-nums text-muted-foreground"
+                >
+                  {archiveNameLength}/{ARCHIVE_NAME_MAX_LENGTH}
+                </span>
+              </div>
               <input
+                id="archive-name"
                 value={settings.archiveName}
                 onChange={(e) => set('archiveName', e.target.value)}
-                maxLength={48}
+                maxLength={ARCHIVE_NAME_MAX_LENGTH * 2}
                 spellCheck={false}
                 autoComplete="off"
-                aria-label="Archive name"
+                aria-describedby="archive-name-hint archive-name-count"
+                onBlur={(e) => {
+                  const normalized = e.currentTarget.value.trim()
+                  if (normalized !== settings.archiveName) set('archiveName', normalized)
+                }}
                 placeholder="Enter an archive name"
-                className="mt-2 h-9 w-full border border-border bg-card px-3 font-display text-[16px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[var(--primary)]"
+                className="mt-2 h-10 w-full border border-border bg-card px-3 font-display text-[16px] text-foreground outline-none placeholder:font-sans placeholder:text-[13px] placeholder:text-muted-foreground focus:border-[var(--primary)] focus-visible:ring-1 focus-visible:ring-[var(--primary)]"
               />
-              {settings.archiveName !== DEFAULT_ARCHIVE_NAME && (
-                <button
-                  type="button"
-                  onClick={() => set('archiveName', DEFAULT_ARCHIVE_NAME)}
-                  className="press mt-2 font-sans text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground underline underline-offset-4 hover:text-foreground"
-                >
-                  Reset to default
-                </button>
-              )}
+              <div className="mt-2 flex min-h-8 items-center justify-end">
+                {settings.archiveName !== DEFAULT_ARCHIVE_NAME && (
+                  <button
+                    type="button"
+                    onClick={() => set('archiveName', DEFAULT_ARCHIVE_NAME)}
+                    className="press min-h-8 border border-border px-2 font-sans text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:border-[var(--foreground)] hover:text-foreground focus-visible:outline-1 focus-visible:outline-[var(--primary)]"
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </div>
+              <figure className="mt-3 border-b border-border pb-3">
+                <figcaption className="rule-label mb-2 text-[9px]">Home preview</figcaption>
+                {settings.archiveName.trim() ? (
+                  <div className="max-w-[14ch] font-display text-[36px] leading-[0.95] tracking-tight">
+                    <MastheadName name={settings.archiveName} animated={false} />
+                  </div>
+                ) : (
+                  <p className="text-[12px] leading-relaxed text-muted-foreground">The masthead title is hidden while this is blank.</p>
+                )}
+              </figure>
             </div>
             <Toggle
               label="Shortcut hints"

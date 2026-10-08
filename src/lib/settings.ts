@@ -3,6 +3,7 @@ import { useCallback, useSyncExternalStore } from 'react'
 export type ThemeId = 'paper' | 'halide' | 'velvet' | 'blueprint'
 
 export const DEFAULT_ARCHIVE_NAME = 'The Standing Collection'
+export const ARCHIVE_NAME_MAX_LENGTH = 48
 
 export const LANGUAGES: { id: string; label: string }[] = [
   { id: 'en-US', label: 'English' },
@@ -96,7 +97,7 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
   out.openAfterAdd = !!s.openAfterAdd
   out.showCommunityScores = !!s.showCommunityScores
   if (typeof s.archiveName === 'string') {
-    out.archiveName = s.archiveName.trim().slice(0, 48)
+    out.archiveName = Array.from(s.archiveName).slice(0, ARCHIVE_NAME_MAX_LENGTH).join('')
   }
   if ((STATUS_IDS as readonly string[]).includes(s.defaultStatus as string)) {
     out.defaultStatus = s.defaultStatus as Settings['defaultStatus']

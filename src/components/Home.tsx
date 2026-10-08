@@ -3,6 +3,7 @@ import { img, type MediaType, type TmdbTitle } from '../lib/tmdb'
 import { formatDayMonth, formatRelativeDay, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
 import { useSettings } from '../lib/settings'
 import { Empty, SectionHead, Stat } from './ui'
+import MastheadName from './MastheadName'
 
 const MonthlyChart = lazy(() => import('./MonthlyChart'))
 
@@ -232,29 +233,5 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
         </p>
       )}
     </div>
-  )
-}
-
-/** Archive masthead: leading words set roman, the closing word italic in the
- *  house accent — the two-beat entrance is preserved for custom names. */
-function MastheadName({ name }: { name: string }) {
-  const words = name.trim().split(/\s+/).filter(Boolean)
-  if (words.length === 0) return null
-  if (words.length === 1) {
-    return (
-      <span className="animate-rise inline-block italic text-[var(--primary)] [animation-delay:180ms]">
-        {words[0]}
-      </span>
-    )
-  }
-  const head = words.slice(0, -1).join(' ')
-  const tail = words[words.length - 1]
-  return (
-    <>
-      <span className="animate-rise inline-block [animation-delay:60ms]">{head}</span>{' '}
-      <span className="animate-rise inline-block italic text-[var(--primary)] [animation-delay:180ms]">
-        {tail}
-      </span>
-    </>
   )
 }
