@@ -51,7 +51,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
   return (
     <div className="space-y-16">
       <section>
-        <div className="border-b border-border pb-6 -mx-4 lg:-mx-6 px-4 lg:px-6">
+        <div className="border-b border-border pb-6">
 
           {/* Masthead keeps the full archive name to two balanced lines. */}
           <h1 className="mt-3 w-full max-w-full font-display text-[clamp(22px,6.2vw,92px)] leading-[0.95] tracking-tight">

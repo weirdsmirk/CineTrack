@@ -138,7 +138,8 @@ function ShelfRow({
 
   const [pool, setPool] = useState(shelf.items)
   const [fresh, setFresh] = useState<TmdbTitle[]>([])
-  const [seed, setSeed] = useState(0)
+  // A new mount gets a fresh hand; this seed stays stable across re-renders.
+  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0x1_0000_0000))
   const [busy, setBusy] = useState(false)
   // Every shelf is assembled from page one, so refreshes walk forward from there.
   const pageRef = useRef(1)
