@@ -78,8 +78,8 @@ const DEFAULTS: Settings = {
   metadataLanguage: 'en-US',
 }
 
-const STORAGE = 'archive.settings.v1'
-const STORAGE_CORRUPT = 'archive.settings.v1.corrupt'
+const LEGACY_STORAGE = 'archive.settings.v1'
+const LEGACY_CORRUPT_STORAGE = 'archive.settings.v1.corrupt'
 
 function clamp(n: unknown, min: number, max: number, def: number): number {
   if (typeof n !== 'number' || !Number.isFinite(n)) return def
@@ -146,34 +146,38 @@ function withExtras(s: Settings): Record<string, unknown> {
   return { ...extraKeys, ...s }
 }
 
-function read(): Settings {
+let legacySettingsPresent = false
+
+function readLegacySettings(): Settings {
   try {
-    const raw = localStorage.getItem(STORAGE)
+    if (typeof localStorage === 'undefined') return { ...DEFAULTS }
+    const raw = localStorage.getItem(LEGACY_STORAGE)
     if (!raw) return { ...DEFAULTS }
-    if (raw.length > 100000) {
-      try {
-        localStorage.setItem(STORAGE_CORRUPT, raw.slice(0, 5000))
-        localStorage.removeItem(STORAGE)
-      } catch {}
-      console.warn('[settings] blob too large, resetting')
-      return { ...DEFAULTS }
-    }
     const parsed = JSON.parse(raw) as Partial<Settings>
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return { ...DEFAULTS }
+    legacySettingsPresent = true
     stashExtras(parsed as Record<string, unknown>)
     return sanitize(parsed)
-  } catch (e) {
+  } catch {
     try {
-      const raw = localStorage.getItem(STORAGE) ?? ''
-      localStorage.setItem(STORAGE_CORRUPT, raw.slice(0, 5000))
-      localStorage.removeItem(STORAGE)
-      console.warn('[settings] corrupted, backed up', e)
+      localStorage.removeItem(LEGACY_STORAGE)
+      console.warn('[settings] invalid legacy browser settings were discarded')
     } catch {}
     return { ...DEFAULTS }
   }
 }
 
-let cache: Settings = read()
+function clearLegacyStorage() {
+  try {
+    localStorage.removeItem(LEGACY_STORAGE)
+    localStorage.removeItem(LEGACY_CORRUPT_STORAGE)
+    legacySettingsPresent = false
+  } catch {
+    // The database is already authoritative; inaccessible browser storage is harmless.
+  }
+}
+
+let cache: Settings = readLegacySettings()
 const listeners = new Set<() => void>()
 let hydrating = true
 let hasMutatedDuringHydration = false
@@ -209,17 +213,17 @@ try {
 
 const SETTINGS_ENDPOINT = '/__data/settings'
 let pendingSettingsBody: string | null = null
-let settingsMirrorRunning = false
+let settingsWriteRunning = false
 
-function mirrorToSqlite(s: Settings) {
+function saveToDatabase(s: Settings) {
   if (typeof fetch !== 'function') return
   if (hydrating) {
     hasMutatedDuringHydration = true
     return
   }
   pendingSettingsBody = JSON.stringify(withExtras(s))
-  if (settingsMirrorRunning) return
-  settingsMirrorRunning = true
+  if (settingsWriteRunning) return
+  settingsWriteRunning = true
   void (async () => {
     while (pendingSettingsBody !== null) {
       const body = pendingSettingsBody
@@ -236,80 +240,56 @@ function mirrorToSqlite(s: Settings) {
           keepalive,
           signal: controller.signal,
         })
-        if (!res.ok) console.warn(`[settings] SQLite mirror rejected snapshot (${res.status})`)
+        if (!res.ok) console.warn(`[settings] database rejected settings (${res.status})`)
+        else clearLegacyStorage()
       } catch (e) {
-        console.warn('[settings] SQLite mirror unavailable', e)
+        console.warn('[settings] database unavailable', e)
       } finally {
         clearTimeout(timeout)
       }
     }
-    settingsMirrorRunning = false
+    settingsWriteRunning = false
   })()
 }
 
 async function hydrateFromSqlite() {
-  if (typeof fetch !== 'function') {
-    hydrating = false
-    return
-  }
+  let stored: Record<string, unknown> | null = null
   try {
+    if (typeof fetch !== 'function') return
     const controller = new AbortController()
     const t = setTimeout(() => controller.abort(), 2500)
     const res = await fetch(SETTINGS_ENDPOINT, { signal: controller.signal }).catch(() => null as unknown as Response)
     clearTimeout(t)
-    if (!res || !res.ok) {
-      hydrating = false
-      if (JSON.stringify(cache) !== JSON.stringify(DEFAULTS)) setTimeout(() => mirrorToSqlite(cache), 800)
-      return
-    }
+    if (!res?.ok) return
     const ct = res.headers.get('content-type') || ''
-    if (!ct.includes('application/json')) {
-      hydrating = false
-      return
-    }
-    const stored = (await res.json().catch(() => ({}))) as Partial<Settings>
-    if (!stored || typeof stored !== 'object' || Object.keys(stored).length === 0) {
-      hydrating = false
-      if (JSON.stringify(cache) !== JSON.stringify(DEFAULTS)) mirrorToSqlite(cache)
-      return
-    }
-    stashExtras(stored as Record<string, unknown>, { merge: true })
-    const sanitized = sanitize(stored)
-    // Merge per-key: locally changed keys win, untouched keys take the
-    // server value — a whole-object overwrite would wipe server-side edits
-    // to keys this tab never touched.
-    const merged: Record<string, unknown> = { ...sanitized }
-    for (const [k, v] of Object.entries(cache)) {
-      if (dirtyKeys.has(k as keyof Settings) || JSON.stringify(v) !== JSON.stringify(DEFAULTS[k as keyof Settings])) {
-        merged[k] = v
-      }
-    }
-    const next = sanitize(merged)
-    if (JSON.stringify(next) !== JSON.stringify(cache)) {
-      cache = next
-      // push merged back to make DB portable if local had newer prefs
-      setTimeout(() => mirrorToSqlite(next), 100)
-    } else if (JSON.stringify(sanitized) !== JSON.stringify(cache)) {
-      cache = sanitized
-    }
-    try {
-      applyTheme(cache.theme)
-    } catch {}
-    try {
-      localStorage.setItem(STORAGE, JSON.stringify(withExtras(cache)))
-    } catch (e) {
-      console.warn('[settings] quota', e)
-    }
-    notify()
+    if (!ct.includes('application/json')) return
+    const result: unknown = await res.json()
+    if (!result || typeof result !== 'object' || Array.isArray(result)) return
+    stored = result as Record<string, unknown>
   } catch {
-    // offline
+    // Keep legacy settings in memory and in place until the database is reachable.
   } finally {
     hydrating = false
+    if (stored) {
+      stashExtras(stored, { merge: true })
+      const sanitized = sanitize(stored as Partial<Settings> & Record<string, unknown>)
+      // Keep locally customized values during the one-time migration. The
+      // database fills untouched/default values and remains canonical after it.
+      const merged: Record<string, unknown> = { ...sanitized }
+      for (const [k, v] of Object.entries(cache)) {
+        if (dirtyKeys.has(k as keyof Settings) || JSON.stringify(v) !== JSON.stringify(DEFAULTS[k as keyof Settings])) {
+          merged[k] = v
+        }
+      }
+      cache = sanitize(merged)
+      try { applyTheme(cache.theme) } catch {}
+      if (legacySettingsPresent || hasMutatedDuringHydration) saveToDatabase(cache)
+      else clearLegacyStorage()
+      notify()
+    }
     notifySettingsHydrated()
-    const shouldMirror = hasMutatedDuringHydration
     hasMutatedDuringHydration = false
     dirtyKeys.clear()
-    if (shouldMirror) setTimeout(() => mirrorToSqlite(cache), 200)
   }
 }
 
@@ -328,24 +308,6 @@ export function isSettingsHydrated(): boolean {
 }
 
 void hydrateFromSqlite()
-
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (e) => {
-    if (e.key === STORAGE) {
-      const next = read()
-      if (JSON.stringify(next) !== JSON.stringify(cache)) {
-        cache = next
-        try {
-          applyTheme(cache.theme)
-        } catch {}
-        notify()
-      }
-    }
-  })
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && hasMutatedDuringHydration) mirrorToSqlite(cache)
-  })
-}
 
 /** Non-reactive read, for modules that aren't components. Returns copy. */
 export const currentSettings = (): Settings => ({ ...cache })
@@ -366,17 +328,12 @@ export function useSettings() {
     const next = sanitize({ ...cache, [key]: sanitized })
     cache = next
     dirtyKeys.add(key)
-    try {
-      localStorage.setItem(STORAGE, JSON.stringify(withExtras(cache)))
-    } catch (e) {
-      console.error('[settings] quota', e)
-    }
     if (key === 'theme')
       try {
         applyTheme(cache.theme)
       } catch {}
     if (hydrating) hasMutatedDuringHydration = true
-    else mirrorToSqlite(cache)
+    else saveToDatabase(cache)
     notify()
   }, [])
 

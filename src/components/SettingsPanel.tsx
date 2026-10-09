@@ -52,10 +52,10 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
     try {
       const blob = new Blob([JSON.stringify(entries, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `cinetrack-${new Date().toISOString().slice(0, 10)}.json`
-      a.click()
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `cinetrack-${new Date().toISOString().slice(0, 10)}.json`
+      anchor.click()
       URL.revokeObjectURL(url)
       toast('Library exported', 'success')
     } catch {
@@ -439,9 +439,9 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               </div>
             </div>
 
-            <div className="pt-2">
-              <div className="rule-label mb-2 text-[10px]">Backup &amp; Portability</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="pt-3 border-t border-border">
+              <div className="rule-label mb-2 text-[10px]">Library portability</div>
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={exportLibrary}
@@ -461,10 +461,10 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                   type="file"
                   accept="application/json"
                   className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) importLibrary(f)
-                    e.target.value = ''
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    if (file) void importLibrary(file)
+                    event.target.value = ''
                   }}
                 />
               </div>
@@ -489,7 +489,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
           message={
             <span>
               This will permanently delete all <strong>{entries.length}</strong> titles and logged episodes from your local database.
-              Export a backup before proceeding if you want to preserve your records.
+              Export a JSON copy first if you want to preserve your records.
             </span>
           }
           confirmLabel="Erase all records"

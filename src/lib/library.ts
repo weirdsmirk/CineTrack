@@ -28,9 +28,8 @@ export type Entry = {
   note?: string
 }
 
-const STORAGE = 'archive.library.v1'
-const STORAGE_CORRUPT = 'archive.library.v1.corrupt'
-const MAX_STORAGE_BYTES = 10 * 1024 * 1024
+const LEGACY_STORAGE = 'archive.library.v1'
+const LEGACY_CORRUPT_STORAGE = 'archive.library.v1.corrupt'
 /** Server truncates rewatches at 500 — mirror that client-side. */
 const MAX_REWATCHES = 500
 
@@ -49,7 +48,7 @@ const MAX_EPISODE_KEYS = 20000
 const MAX_TIMESTAMP = 8_640_000_000_000_000
 
 /** Map keys must be `movie:<id>` / `tv:<id>` — anything else (incl. __proto__
- *  style keys from crafted imports) is dropped before it can touch the store. */
+ *  style keys from crafted data) is dropped before it can touch the store. */
 export function isSafeKey(key: unknown): key is string {
   if (typeof key !== 'string') return false
   const match = /^(movie|tv):(\d+)$/.exec(key)
@@ -67,7 +66,7 @@ export function isValidTimestamp(value: unknown): value is number {
 }
 
 /**
- * Bring a stored/imported record up to the current shape in place: rename the
+ * Bring a stored record up to the current shape in place: rename the
  * retired 'completed' status, coerce every scalar, and drop malformed episode
  * / rewatch timestamps — so one bad row can never crash a whole view.
  */
@@ -133,39 +132,42 @@ function sanitizeMap(raw: unknown): Record<string, Entry> {
       dropped++
     }
   }
-  if (dropped > 0) console.warn(`[library] dropped ${dropped} invalid rows on import`)
+  if (dropped > 0) console.warn(`[library] dropped ${dropped} invalid stored rows`)
   return out
 }
 
-let localSnapshotPresent = false
-
-function read(): Record<string, Entry> {
+function readLegacySnapshot(): Record<string, Entry> {
   try {
-    const raw = localStorage.getItem(STORAGE)
+    if (typeof localStorage === 'undefined') return {}
+    const raw = localStorage.getItem(LEGACY_STORAGE)
     if (!raw) return {}
-    if (raw.length > MAX_STORAGE_BYTES) {
-      localStorage.setItem(STORAGE_CORRUPT, raw.slice(0, 20000))
-      localStorage.removeItem(STORAGE)
-      console.warn('[library] local data exceeded the storage limit, reset safely')
-      return {}
-    }
-    localSnapshotPresent = true
-    return sanitizeMap(JSON.parse(raw))
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return sanitizeMap(parsed)
   } catch {
     try {
-      const raw = localStorage.getItem(STORAGE) ?? ''
-      localStorage.setItem(STORAGE_CORRUPT, raw.slice(0, 20000))
-      localStorage.removeItem(STORAGE)
-      localSnapshotPresent = false
-      console.warn('[library] local data corrupted, backed up')
+      localStorage.removeItem(LEGACY_STORAGE)
+      console.warn('[library] invalid legacy browser data was discarded')
     } catch {}
     return {}
   }
 }
 
+function clearLegacyStorage() {
+  try {
+    localStorage.removeItem(LEGACY_STORAGE)
+    localStorage.removeItem(LEGACY_CORRUPT_STORAGE)
+  } catch {
+    // The database is already authoritative; inaccessible browser storage is harmless.
+  }
+}
+
 const listeners = new Set<() => void>()
 const noopSubscribe = () => () => {}
-let cache = read()
+let cache = readLegacySnapshot()
+const legacySnapshot = { ...cache }
+const changedDuringHydration = new Map<string, Entry | null>()
+let clearedDuringHydration = false
 /**
  * Stable array snapshot. Rebuilt only on commit, so consumers can safely use
  * `entries` as a hook dependency — a fresh Object.values() per render would
@@ -174,11 +176,9 @@ let cache = read()
 let snapshot = Object.values(cache)
 
 /**
- * Portable SQLite mirror at data/cinetrack.db, served by a dev-only Vite
- * middleware (see vite.config.ts). localStorage stays the synchronous source
- * of truth; the DB is written best-effort so a failed request never disturbs
- * the UI. In a static production build the endpoint is absent — every call
- * simply no-ops and the app runs on localStorage alone.
+ * SQLite at data/database.sqlite is the persistent source of truth. Existing
+ * browser storage is read once for migration and removed after the database
+ * confirms that the merged snapshot was saved.
  */
 const DB_ENDPOINT = '/__data/library'
 
@@ -186,8 +186,8 @@ let hydrating = true
 let mutatedDuringHydration = false
 
 /** Coalesce rapid full-snapshot writes so bulk episode updates do not queue stale payloads. */
-let pendingMirrorBody: string | null = null
-let mirrorRunning = false
+let pendingDatabaseBody: string | null = null
+let databaseWriteRunning = false
 
 // Hydration completion signal
 const libraryHydrationListeners = new Set<() => void>()
@@ -202,20 +202,20 @@ export function subscribeLibraryHydrated(cb: () => void): () => void {
 export function isLibraryHydrated(): boolean {
   return !hydrating
 }
-function mirrorToSqlite(map: Record<string, Entry>) {
+function saveToDatabase(map: Record<string, Entry>) {
   if (hydrating) {
     mutatedDuringHydration = true
     return
   }
   try {
     if (typeof fetch !== 'function') return
-    pendingMirrorBody = JSON.stringify(map)
-    if (mirrorRunning) return
-    mirrorRunning = true
+    pendingDatabaseBody = JSON.stringify(map)
+    if (databaseWriteRunning) return
+    databaseWriteRunning = true
     void (async () => {
-      while (pendingMirrorBody !== null) {
-        const body = pendingMirrorBody
-        pendingMirrorBody = null
+      while (pendingDatabaseBody !== null) {
+        const body = pendingDatabaseBody
+        pendingDatabaseBody = null
         const controller = new AbortController()
         const timeout = setTimeout(() => controller.abort(), 8000)
         try {
@@ -228,14 +228,15 @@ function mirrorToSqlite(map: Record<string, Entry>) {
             keepalive,
             signal: controller.signal,
           })
-          if (!res.ok) console.warn(`[library] SQLite mirror rejected snapshot (${res.status})`)
+          if (!res.ok) console.warn(`[library] database rejected snapshot (${res.status})`)
+          else clearLegacyStorage()
         } catch (e) {
-          console.warn('[library] SQLite mirror unavailable', e)
+          console.warn('[library] database unavailable', e)
         } finally {
           clearTimeout(timeout)
         }
       }
-      mirrorRunning = false
+      databaseWriteRunning = false
     })()
   } catch {
     /* a synchronously-throwing fetch must never break UI updates */
@@ -243,55 +244,61 @@ function mirrorToSqlite(map: Record<string, Entry>) {
 }
 
 /**
- * Hydrate from on-disk SQLite database at data/cinetrack.db on initial load.
- * If SQLite has entries, it populates the app; if SQLite is fresh and localStorage
- * has existing records, it seeds SQLite so the collection is saved to disk immediately.
- * Writes made while hydration is in flight always win over the snapshot.
+ * Load the canonical database, merge any records from the previous browser
+ * store, and persist that one-time migration before removing the old copy.
  */
 async function hydrateFromSqlite() {
-  if (typeof fetch !== 'function') {
-    hydrating = false
-    return
-  }
+  let databaseSnapshot: Record<string, Entry> | null = null
   try {
+    if (typeof fetch !== 'function') return
     const controller = new AbortController()
     const t = setTimeout(() => controller.abort(), 2500)
     const res = await fetch(DB_ENDPOINT, { signal: controller.signal }).catch(() => null as unknown as Response)
     clearTimeout(t)
-    if (!res || !res.ok) {
-      hydrating = false
-      if (Object.keys(cache).length > 0) mirrorToSqlite(cache)
-      return
-    }
+    if (!res?.ok) return
     const ct = res.headers.get('content-type') || ''
-    if (!ct.includes('application/json')) {
-      hydrating = false
-      return
-    }
-    const map = sanitizeMap(await res.json().catch(() => ({})))
-    if (Object.keys(map).length > 0 && !localSnapshotPresent && !mutatedDuringHydration) {
-      commit(map)
-    } else if (localSnapshotPresent || Object.keys(cache).length > 0) {
-      // localStorage is authoritative. A present empty snapshot is meaningful:
-      // it can represent an intentional archive wipe.
-      hydrating = false
-      mirrorToSqlite(cache)
-      return
-    }
+    if (!ct.includes('application/json')) return
+    databaseSnapshot = sanitizeMap(await res.json())
   } catch {
-    /* offline or static build — stay on localStorage */
+    // Keep the legacy data in memory and in place until the database is reachable.
   } finally {
     hydrating = false
+    if (databaseSnapshot) {
+      const merged = clearedDuringHydration ? {} : { ...databaseSnapshot }
+      if (!clearedDuringHydration) {
+        for (const [key, legacyEntry] of Object.entries(legacySnapshot)) {
+          const storedEntry = merged[key]
+          merged[key] = storedEntry ? mergeMigratedEntry(legacyEntry, storedEntry) : legacyEntry
+        }
+      }
+      for (const [key, changedEntry] of changedDuringHydration) {
+        if (changedEntry) merged[key] = changedEntry
+        else delete merged[key]
+      }
+      const databaseChanged = clearedDuringHydration || stableStringify(merged) !== stableStringify(databaseSnapshot)
+      cache = merged
+      snapshot = Object.values(merged)
+      for (const fn of [...listeners]) {
+        try { fn() } catch (e) { console.error('[library] subscriber failed', e) }
+      }
+      if (databaseChanged || mutatedDuringHydration) saveToDatabase(merged)
+      else clearLegacyStorage()
+    }
+    mutatedDuringHydration = false
     notifyLibraryHydrated()
-    if (mutatedDuringHydration) mirrorToSqlite(cache)
   }
 }
 
 function commit(next: Record<string, Entry>) {
+  if (hydrating) {
+    const changedKeys = new Set([...Object.keys(cache), ...Object.keys(next)])
+    for (const key of changedKeys) {
+      if (JSON.stringify(cache[key]) !== JSON.stringify(next[key])) changedDuringHydration.set(key, next[key] ?? null)
+    }
+  }
   cache = next
   snapshot = Object.values(next)
-  // Subscribers first: the UI must reflect the write even if persistence
-  // below throws (private-mode quota, blocked endpoint, …).
+  // Subscribers first: the UI reflects edits even if the database is offline.
   for (const fn of [...listeners]) {
     try {
       fn()
@@ -299,15 +306,7 @@ function commit(next: Record<string, Entry>) {
       console.error('[library] subscriber failed', e)
     }
   }
-  try {
-    localStorage.setItem(STORAGE, JSON.stringify(next))
-    localSnapshotPresent = true
-  } catch (e) {
-    // Memory + UI stay live and the SQLite mirror may still land; warn loudly
-    // instead of failing silently, and retry on the next commit.
-    console.warn('[library] local persistence failed', e)
-  }
-  mirrorToSqlite(next)
+  saveToDatabase(next)
 }
 
 void hydrateFromSqlite()
@@ -447,8 +446,11 @@ export function useLibrary(subscribeToStore = true) {
     commit({ ...cache, [key]: { ...entry, rewatches } })
   }, [])
 
+  const clear = useCallback(() => {
+    if (hydrating) clearedDuringHydration = true
+    commit({})
+  }, [])
   const replaceAll = useCallback((next: Record<string, Entry>) => commit(sanitizeMap(next)), [])
-  const clear = useCallback(() => commit({}), [])
 
   return {
     entries,
@@ -465,37 +467,40 @@ export function useLibrary(subscribeToStore = true) {
   }
 }
 
-if (typeof window !== 'undefined') {
-  // Cross-tab sync: another tab's commit re-reads here (the event never fires
-  // in the tab that wrote, so this cannot loop). Comparison is key-order
-  // insensitive so identical maps don't ping-pong rewrites between tabs.
-  window.addEventListener('storage', (e) => {
-    if (e.key !== STORAGE) return
-    if (e.newValue === null) {
-      commit({})
-      return
-    }
-    try {
-      const next = sanitizeMap(JSON.parse(e.newValue))
-      if (stableStringify(next) !== stableStringify(cache)) commit(next)
-    } catch {
-      /* ignore malformed cross-tab payloads */
-    }
-  })
-}
-
 /** Order-insensitive JSON for comparing id-keyed maps across tabs. */
 function stableStringify(map: Record<string, Entry>): string {
   const keys = Object.keys(map).sort()
   return JSON.stringify(keys.map((k) => [k, map[k]]))
 }
 
+/** Preserve the previous browser store's values on collisions, fill missing
+ * fields from SQLite, and combine progress during the one-time migration. */
+function mergeMigratedEntry(legacy: Entry, database: Entry): Entry {
+  const rewatches = [...new Set([...legacy.rewatches, ...database.rewatches])]
+    .sort((a, b) => a - b)
+    .slice(-MAX_REWATCHES)
+  return {
+    ...database,
+    ...legacy,
+    episodes: { ...database.episodes, ...legacy.episodes },
+    rewatches,
+    rating: legacy.rating ?? database.rating,
+    favorite: legacy.favorite || database.favorite,
+    watchedAt: legacy.watchedAt ?? database.watchedAt,
+    runtime: legacy.runtime ?? database.runtime,
+    totalEpisodes: legacy.totalEpisodes ?? database.totalEpisodes,
+    poster: legacy.poster ?? database.poster,
+    backdrop: legacy.backdrop ?? database.backdrop,
+    title: legacy.title || database.title,
+    year: legacy.year || database.year,
+    addedAt: Math.min(legacy.addedAt, database.addedAt),
+  }
+}
+
 export type ImportResult = { merged: Record<string, Entry>; imported: number; skipped: number; combined: number }
 
-/** Non-destructive collision merge: the existing record is authoritative for
- *  everything you set yourself (rating, status, dates, title); the import may
- *  only fill empty fields and contribute episode/rewatch progress — a crafted
- *  file can never silently erase curated data. */
+/** Keep existing curated fields on collisions; imports can contribute missing
+ * metadata and viewing progress without erasing the current library. */
 function mergeImportedEntry(existing: Entry, incoming: Entry): Entry {
   const rewatches = [...new Set([...existing.rewatches, ...incoming.rewatches])]
     .sort((a, b) => a - b)
@@ -518,9 +523,7 @@ function mergeImportedEntry(existing: Entry, incoming: Entry): Entry {
   }
 }
 
-/** Validate an import payload: throws a user-actionable error, otherwise
- *  returns the merged map plus import/skip/combine counts. Key collisions are
- *  merged non-destructively (existing data wins) and reported via `combined`. */
+/** Validate a library JSON file and merge it without replacing curated data. */
 export function parseLibraryImport(text: string, existing: Entry[]): ImportResult {
   if (text.length > 5 * 1024 * 1024) throw new Error('File too large — max 5 MB.')
   let parsed: unknown
@@ -532,26 +535,26 @@ export function parseLibraryImport(text: string, existing: Entry[]): ImportResul
   if (!Array.isArray(parsed)) throw new Error('Not a CineTrack JSON export — expected a list of titles.')
   if (parsed.length > 5000) throw new Error('Too many entries — max 5000 titles per import.')
   const merged: Record<string, Entry> = {}
-  for (const e of existing) merged[`${e.mediaType}:${e.id}`] = e
+  for (const entry of existing) merged[`${entry.mediaType}:${entry.id}`] = entry
   let imported = 0
   let skipped = 0
   let combined = 0
   for (const raw of parsed) {
-    const e = raw as Partial<Entry>
-    if (!Number.isSafeInteger(e?.id) || (e?.id as number) <= 0 || (e?.mediaType !== 'movie' && e?.mediaType !== 'tv')) {
+    const entry = raw as Partial<Entry>
+    if (!Number.isSafeInteger(entry?.id) || (entry?.id as number) <= 0 || (entry?.mediaType !== 'movie' && entry?.mediaType !== 'tv')) {
       skipped++
       continue
     }
     try {
-      const key = `${e.mediaType}:${e.id}`
+      const key = `${entry.mediaType}:${entry.id}`
       if (!isSafeKey(key)) {
         skipped++
         continue
       }
-      const incoming = normalizeEntry(e as Entry)
-      const existingEntry = merged[key]
-      if (existingEntry) {
-        merged[key] = mergeImportedEntry(existingEntry, incoming)
+      const incoming = normalizeEntry(entry as Entry)
+      const current = merged[key]
+      if (current) {
+        merged[key] = mergeImportedEntry(current, incoming)
         combined++
       } else {
         merged[key] = incoming

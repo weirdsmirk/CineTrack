@@ -77,13 +77,12 @@ function cspIndexPlugin(): Plugin {
 }
 
 /**
- * Portable SQLite persistence — single source of truth at data/cinetrack.db
+ * SQLite persistence — single source of truth at data/database.sqlite
  * Works in both dev (`vite dev`) and preview (`vite preview`), so the
  * project folder is self-contained. Copy the folder and the DB moves with it.
- * Production/static fallback is localStorage + fetch seeding when server absent.
  */
 function cinetrackSqlitePersistence(): Plugin {
-  const DB_PATH = path.resolve(import.meta.dirname, 'data/cinetrack.db')
+  const DB_PATH = path.resolve(import.meta.dirname, 'data/database.sqlite')
   const WASM_PATH = path.resolve(import.meta.dirname, 'node_modules/sql.js/dist/sql-wasm.wasm')
   const API_FILE = path.resolve(import.meta.dirname, 'API.txt')
   const TMDB_BASE = 'https://api.themoviedb.org/3'
@@ -262,18 +261,9 @@ function cinetrackSqlitePersistence(): Plugin {
     try {
       db = buffer ? new SQL.Database(buffer) : new SQL.Database()
     } catch (e) {
-      // Corrupt DB: quarantine it aside and start fresh instead of 500ing forever.
-      if (!dbExists) throw e
-      try {
-        const q = `${DB_PATH}.corrupt.${Date.now()}`
-        fs.renameSync(DB_PATH, q)
-        try {
-          console.warn(`[cinetrack-sqlite] corrupt DB quarantined at ${q}`)
-        } catch {}
-      } catch (renameError) {
-        throw new Error(`DB file corrupt and could not be quarantined: ${(renameError as Error).message}`)
-      }
-      db = new SQL.Database()
+      // Never move or replace a damaged database: keep the sole copy intact
+      // and fail the request so a later write cannot silently erase records.
+      throw new Error(`Database file is corrupt: ${(e as Error).message}`)
     }
     db.run(`
       CREATE TABLE IF NOT EXISTS library (
@@ -338,47 +328,30 @@ function cinetrackSqlitePersistence(): Plugin {
     return db
   }
 
-  let lastCleanup = 0
   function persist(db: any) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true })
-    const tmp = `${DB_PATH}.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`
-    let renamed = false
+    const data = Buffer.from(db.export())
+    if (data.length > 64 * 1024 * 1024) throw new Error('Database file too large')
+    const dir = path.dirname(DB_PATH)
+    fs.mkdirSync(dir, { recursive: true })
+    const existed = fs.existsSync(DB_PATH)
+    const fd = fs.openSync(DB_PATH, existed ? 'r+' : 'w', 0o600)
     try {
-      const data = Buffer.from(db.export())
-      fs.writeFileSync(tmp, data, { mode: 0o600 })
-      const fd = fs.openSync(tmp, 'r+')
-      try {
-        fs.fchmodSync(fd, 0o600)
-        fs.fsyncSync(fd)
-      } finally {
-        fs.closeSync(fd)
+      fs.fchmodSync(fd, 0o600)
+      let offset = 0
+      while (offset < data.length) {
+        const written = fs.writeSync(fd, data, offset, data.length - offset, offset)
+        if (written <= 0) throw new Error('Database write made no progress')
+        offset += written
       }
-      // atomic replace + fsync directory for durability
-      fs.renameSync(tmp, DB_PATH)
-      renamed = true
+      fs.ftruncateSync(fd, data.length)
+      fs.fsyncSync(fd)
     } finally {
-      if (!renamed) {
-        try { if (fs.existsSync(tmp)) fs.unlinkSync(tmp) } catch {}
-      }
+      fs.closeSync(fd)
     }
-    try {
-      const dirFd = fs.openSync(path.dirname(DB_PATH), 'r')
-      try { fs.fsyncSync(dirFd) } catch {}
-      fs.closeSync(dirFd)
-    } catch {}
-    // throttled cleanup — hourly, not per write
-    if (Date.now() - lastCleanup > 60 * 60 * 1000) {
-      lastCleanup = Date.now()
+    if (!existed) {
       try {
-        const dir = path.dirname(DB_PATH)
-        for (const f of fs.readdirSync(dir)) {
-          if (!f.startsWith('cinetrack.db.tmp.')) continue
-          const full = path.join(dir, f)
-          try {
-            const st = fs.statSync(full)
-            if (Date.now() - st.mtimeMs > 60 * 60 * 1000) fs.unlinkSync(full)
-          } catch {}
-        }
+        const dirFd = fs.openSync(dir, 'r')
+        try { fs.fsyncSync(dirFd) } finally { fs.closeSync(dirFd) }
       } catch {}
     }
   }
@@ -512,7 +485,7 @@ function cinetrackSqlitePersistence(): Plugin {
     return p
   }
 
-  // Shared attachment for both dev server and preview server — keeps data/cinetrack.db portable.
+  // Shared attachment for dev and preview — both use data/database.sqlite.
   // Preview is strict: headerless non-browser clients are rejected there,
   // while dev still allows local curl debugging.
   async function attachHandlers(

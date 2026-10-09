@@ -16,16 +16,11 @@ logs/
 .env
 API.txt
 
-# Databases and library data — local device only, never commit
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-*.sqlite
-*.sqlite3
+# The one local database; other files in data/ remain visible for review
+/data/database.sqlite
+
+# Library exports created from Settings
 cinetrack-*.json
-data/*
-!data/.gitkeep
 
 coverage/
 .nyc_output/

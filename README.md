@@ -43,7 +43,7 @@ Both servers run at the address shown in the terminal.
 * `src/components/` — UI components
 * `src/lib/` — library, TMDb, and settings logic
 * `vite.config.ts` — dev and preview server, SQLite persistence, TMDb proxy
-* `data/` — your local database, never committed
+* `data/database.sqlite` — the single local database, never committed
 
 ## Privacy
 
