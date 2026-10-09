@@ -1,57 +1,29 @@
 # CineTrack
 
-A personal film and TV tracking app. Track what you want to watch, what you're
-watching, what you've finished, and what you've dropped, with ratings, rewatches,
-and episode progress.
+CineTrack helps you keep track of films and TV shows you want to watch or have seen. Find titles through TMDb, then save them to your local library with ratings, favourites, rewatches, and episode progress.
 
-It runs locally and keeps your library on your machine. Film and TV information
-comes from [TMDb](https://www.themoviedb.org/).
+## Run locally
 
-Built with React, TypeScript, Vite, Tailwind CSS, Recharts, and SQLite via `sql.js`.
+You’ll need [Node.js 22.12 or later](https://nodejs.org/) and a [TMDb API key](https://www.themoviedb.org/).
 
-## Requirements
+1. Install the dependencies:
 
-* Node.js 22.12 or newer
-* A TMDb API key
+   ```bash
+   npm ci
+   ```
 
-## Setup
+2. Create a `.env` file in the project folder and add your key:
 
-```bash
-npm ci
-```
+   ```env
+   TMDB_KEY=your-key-here
+   ```
 
-Create a `.env` file in the project root:
+3. Start CineTrack:
 
-```env
-TMDB_KEY=your-key-here
-```
+   ```bash
+   npm run dev
+   ```
 
-## Usage
+Open the address printed in the terminal. Your library is stored on your device.
 
-```bash
-npm run dev       # start the dev server
-npm run build     # create a production build
-npm run start     # serve the production build on 127.0.0.1
-npm run typecheck # check TypeScript
-npm run verify    # typecheck and build
-```
-
-Both servers run at the address shown in the terminal.
-
-## Layout
-
-* `src/` — the React app
-* `src/components/` — UI components
-* `src/lib/` — library, TMDb, and settings logic
-* `vite.config.ts` — dev and preview server, SQLite persistence, TMDb proxy
-* `data/database.sqlite` — the single local database, never committed
-
-## Privacy
-
-No analytics, no tracking, no accounts. Nothing leaves your machine except direct
-requests to TMDb for film and TV metadata.
-
-## License
-
-[MIT](LICENSE). Film and TV metadata, posters, and stills are provided by
-[TMDb](https://www.themoviedb.org/); TMDb's own terms apply to its data and imagery.
+To run the production build locally, use `npm run build` followed by `npm run start`.
