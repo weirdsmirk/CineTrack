@@ -1020,30 +1020,32 @@ setShown(false)
             )
           })}
           {mediaType === 'tv' && status === 'watched' && (
-            <button
-              type="button"
-              aria-label={`Rewatching: ${rewatching ? 'pause' : rewatchProgress ? 'resume' : 'start'} rewatch`}
-              aria-pressed={rewatching}
-              onClick={() => {
-                onToggleRewatch(!rewatching)
-                close()
-              }}
-              className={`press flex h-9 w-full items-center justify-between border px-3 text-left font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-all ${
-                rewatching
-                  ? 'border-[var(--primary)] bg-[var(--primary)]/[0.08] text-[var(--primary)] shadow-xs'
-                  : 'border-border text-muted-foreground hover:border-[var(--primary)] hover:text-[var(--primary)]'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <RewatchIcon />
-                Rewatching
-              </span>
-              {rewatching && (
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              )}
-            </button>
+            <div className="border-t border-border pt-2.5">
+              <button
+                type="button"
+                aria-label={`Rewatching: ${rewatching ? 'pause' : rewatchProgress ? 'resume' : 'start'} rewatch`}
+                aria-pressed={rewatching}
+                onClick={() => {
+                  onToggleRewatch(!rewatching)
+                  close()
+                }}
+                className={`press flex h-9 w-full items-center justify-between border px-3 text-left font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-all ${
+                  rewatching
+                    ? 'border-[var(--primary)] bg-[var(--primary)]/[0.08] text-[var(--primary)] shadow-xs'
+                    : 'border-border text-muted-foreground hover:border-[var(--primary)] hover:text-[var(--primary)]'
+                }`}
+              >
+                <span className="flex items-center gap-2.5">
+                  <RewatchIcon />
+                  Rewatching
+                </span>
+                {rewatching && (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                )}
+              </button>
+            </div>
           )}
         </div>
       </div>
