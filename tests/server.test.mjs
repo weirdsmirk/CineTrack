@@ -113,6 +113,42 @@ test('local server applies per-record patches and protects private routes', asyn
     assert.deepEqual(library['tv:4'].episodes, { '1-1': 1200 })
     assert.equal(library['tv:4'].rewatching, false)
     assert.deepEqual(library['tv:4'].rewatchEpisodes, { '1-2': 1201 })
+    const droppedWithoutHistory = { ...entry(12, 'Dropped without progress'), mediaType: 'tv', status: 'dropped' }
+    assert.equal((await post('/__data/library', { clear: false, changes: { 'tv:12': droppedWithoutHistory } })).status, 400)
+
+    const watchingWithProgress = {
+      ...entry(9, 'Eligible to drop'),
+      mediaType: 'tv',
+      status: 'watching',
+      episodes: { '1-1': 1400 },
+    }
+    assert.equal((await post('/__data/library', { clear: false, changes: { 'tv:9': watchingWithProgress } })).status, 204)
+    assert.equal((await post('/__data/library', {
+      clear: false,
+      changes: { 'tv:9': { ...watchingWithProgress, status: 'dropped' } },
+    })).status, 204)
+
+    const plannedWithProgress = {
+      ...entry(10, 'Not currently watching'),
+      mediaType: 'tv',
+      status: 'planned',
+      episodes: { '1-1': 1500 },
+    }
+    assert.equal((await post('/__data/library', { clear: false, changes: { 'tv:10': plannedWithProgress } })).status, 204)
+    const rejectedDrop = await post('/__data/library', {
+      clear: false,
+      changes: { 'tv:10': { ...plannedWithProgress, status: 'dropped' } },
+    })
+    assert.equal(rejectedDrop.status, 400)
+    library = await (await fetch(`${base}/__data/library`)).json()
+    assert.equal(library['tv:10'].status, 'planned')
+
+    const watchingWithoutProgress = { ...entry(11, 'No progress yet'), mediaType: 'tv', status: 'watching' }
+    assert.equal((await post('/__data/library', { clear: false, changes: { 'tv:11': watchingWithoutProgress } })).status, 204)
+    assert.equal((await post('/__data/library', {
+      clear: false,
+      changes: { 'tv:11': { ...watchingWithoutProgress, status: 'dropped' } },
+    })).status, 400)
 
     const droppedMovie = { ...entry(6, 'Legacy dropped movie'), status: 'dropped', watchedAt: 1300, rating: 8, note: 'Keep movie data' }
     assert.equal((await post('/__data/library', { clear: false, changes: { 'movie:6': droppedMovie } })).status, 204)

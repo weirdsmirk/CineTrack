@@ -176,7 +176,7 @@ export function StatusBadge({ status, rewatching = false }: { status: Status; re
 export function SectionHead({ index, title, note, right, rule = true, fullBleed = false, titleClassName, headingLevel = 2 }: { index?: string; title: string; note?: string; right?: ReactNode; rule?: boolean; fullBleed?: boolean; titleClassName?: string; headingLevel?: 1 | 2 | 3 }) {
   const Heading = `h${headingLevel}` as 'h1' | 'h2' | 'h3'
   return (
-    <div className={`relative z-30 flex items-end justify-between gap-6 ${rule ? 'mb-6 pb-3' : 'mb-4'}`}>
+    <div className={`relative z-30 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end sm:gap-6 ${rule ? 'mb-6 pb-3' : 'mb-4'}`}>
       {/* The rule beneath the head draws itself in rather than appearing. */}
       {rule && (
         <span

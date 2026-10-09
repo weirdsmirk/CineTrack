@@ -822,6 +822,7 @@ function cinetrackSqlitePersistence(): Plugin {
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                   `)
                   const remove = db.prepare('DELETE FROM library WHERE key = ?')
+                  const readPrevious = db.prepare('SELECT json FROM library WHERE key = ?')
                   for (const [key, val] of Object.entries(map)) {
                     if (!isSafeDbKey(key)) continue
                     if (val === null) {
@@ -875,6 +876,35 @@ function cinetrackSqlitePersistence(): Plugin {
                       rewatches,
                       ...(typeof val.note === 'string' ? { note: val.note.slice(0, 2000) } : {}),
                     }
+                    if (normalized.status === 'dropped') {
+                      let previous: Record<string, unknown> | null = null
+                      let previousExists = false
+                      readPrevious.bind([key])
+                      if (readPrevious.step()) {
+                        previousExists = true
+                        try {
+                          const row = readPrevious.get() as [string]
+                          const parsed: unknown = JSON.parse(row[0])
+                          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                            previous = parsed as Record<string, unknown>
+                          }
+                        } catch {
+                          // Treat unreadable legacy rows as an invalid transition.
+                        }
+                      }
+                      readPrevious.reset()
+                      const priorEpisodes = previous?.episodes
+                      const priorHasProgress = priorEpisodes && typeof priorEpisodes === 'object' && !Array.isArray(priorEpisodes)
+                        && Object.entries(priorEpisodes).some(([episodeKey, stamp]) => /^\d+-\d+$/.test(episodeKey) && isValidTimestamp(stamp))
+                      const alreadyDropped = previous?.mediaType === 'tv' && previous.status === 'dropped'
+                      const validTransition = previous?.mediaType === 'tv' && previous.status === 'watching' && priorHasProgress
+                      const importedHistory = !previousExists && Object.keys(episodes).length > 0
+                      if (mediaType !== 'tv' || (!alreadyDropped && !validTransition && !importedHistory) || Object.keys(episodes).length === 0) {
+                        const error = new Error('Dropped status requires a show with recorded episode progress that is already being watched.')
+                        Object.assign(error, { statusCode: 400 })
+                        throw error
+                      }
+                    }
                     upsert.run([
                       key,
                       normalized.mediaType,
@@ -898,6 +928,7 @@ function cinetrackSqlitePersistence(): Plugin {
                   }
                   upsert.free()
                   remove.free()
+                  readPrevious.free()
                   db.run('COMMIT')
                   persist(db)
                 } catch (e) {
@@ -919,6 +950,12 @@ function cinetrackSqlitePersistence(): Plugin {
             res.end()
             return
           } catch (err) {
+            if ((err as Error & { statusCode?: number }).statusCode === 400) {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: (err as Error).message }))
+              return
+            }
             if ((err as Error).message === 'PAYLOAD_TOO_LARGE') {
               res.statusCode = 413
               res.setHeader('Content-Type', 'application/json')

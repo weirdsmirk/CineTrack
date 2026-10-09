@@ -265,7 +265,7 @@ test('movie rewatches count once, add runtime, and preserve the original watch d
   assert.equal(lastActivityAt(movie), rewatchAt)
   assert.deepEqual(
     recentCompletions([movie]).map(({ at, label }) => ({ at, label })),
-    [{ at: rewatchAt, label: 'Rewatch' }, { at: watchedAt, label: 'Movie' }],
+    [{ at: rewatchAt, label: 'Rewatch' }, { at: watchedAt, label: 'Film' }],
   )
   assert.equal(activityByMonth([movie], 1)[0].count, 2)
 })

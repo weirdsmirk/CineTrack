@@ -1,10 +1,10 @@
 # CineTrack
 
-A personal movie and TV tracking app. Track what you want to watch, what you're
+A personal film and TV tracking app. Track what you want to watch, what you're
 watching, what you've finished, and what you've dropped, with ratings, rewatches,
 and episode progress.
 
-It runs locally and keeps your library on your machine. Movie and TV information
+It runs locally and keeps your library on your machine. Film and TV information
 comes from [TMDb](https://www.themoviedb.org/).
 
 Built with React, TypeScript, Vite, Tailwind CSS, Recharts, and SQLite via `sql.js`.
@@ -49,9 +49,9 @@ Both servers run at the address shown in the terminal.
 ## Privacy
 
 No analytics, no tracking, no accounts. Nothing leaves your machine except direct
-requests to TMDb for movie and TV metadata.
+requests to TMDb for film and TV metadata.
 
 ## License
 
-[MIT](LICENSE). Movie and TV metadata, posters, and stills are provided by
+[MIT](LICENSE). Film and TV metadata, posters, and stills are provided by
 [TMDb](https://www.themoviedb.org/); TMDb's own terms apply to its data and imagery.
