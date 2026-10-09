@@ -2,6 +2,7 @@ import { useCallback, useSyncExternalStore } from 'react'
 import type { MediaType, TmdbTitle } from './tmdb'
 import { isSafeImagePath, titleOf, yearOf } from './tmdb'
 import { currentSettings } from './settings'
+import { setPersistenceState } from './persistence'
 
 export type Status = 'watching' | 'planned' | 'watched' | 'dropped'
 
@@ -185,9 +186,95 @@ const DB_ENDPOINT = '/__data/library'
 let hydrating = true
 let mutatedDuringHydration = false
 
-/** Coalesce rapid full-snapshot writes so bulk episode updates do not queue stale payloads. */
-let pendingDatabaseBody: string | null = null
+/** Coalesce rapid per-record changes; edits in another tab remain untouched. */
+const pendingDatabaseChanges = new Map<string, Entry | null>()
+let pendingDatabaseClear = false
 let databaseWriteRunning = false
+let databaseRetryTimer: ReturnType<typeof setTimeout> | null = null
+let databaseRetryDelay = 1000
+
+function scheduleDatabaseRetry() {
+  if (databaseRetryTimer) return
+  databaseRetryTimer = setTimeout(() => {
+    databaseRetryTimer = null
+    void flushDatabaseChanges()
+  }, databaseRetryDelay)
+  databaseRetryDelay = Math.min(databaseRetryDelay * 2, 30_000)
+}
+
+async function flushDatabaseChanges() {
+  if (databaseWriteRunning || (!pendingDatabaseClear && pendingDatabaseChanges.size === 0)) return
+  if (databaseRetryTimer) {
+    clearTimeout(databaseRetryTimer)
+    databaseRetryTimer = null
+  }
+  databaseWriteRunning = true
+  setPersistenceState('library', 'saving')
+  try {
+    while (pendingDatabaseClear || pendingDatabaseChanges.size > 0) {
+      const clearLibrary = pendingDatabaseClear
+      const changes = Object.fromEntries(pendingDatabaseChanges)
+      pendingDatabaseClear = false
+      pendingDatabaseChanges.clear()
+      const body = JSON.stringify({ clear: clearLibrary, changes })
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 8000)
+      try {
+        const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
+        const keepalive = hidden && new TextEncoder().encode(body).byteLength <= 64 * 1024
+        const res = await fetch(DB_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          keepalive,
+          signal: controller.signal,
+        })
+        if (!res.ok) throw new Error(`Database rejected update (${res.status})`)
+        clearLegacyStorage()
+        databaseRetryDelay = 1000
+      } catch (e) {
+        // Keep the latest value per key. If a newer edit arrived during this
+        // request, it already occupies the map and must win over this batch.
+        for (const [key, value] of Object.entries(changes)) {
+          if (!pendingDatabaseChanges.has(key)) pendingDatabaseChanges.set(key, value as Entry | null)
+        }
+        if (clearLibrary) pendingDatabaseClear = true
+        console.warn('[library] database unavailable; changes will be retried', e)
+        setPersistenceState('library', 'error')
+        scheduleDatabaseRetry()
+        break
+      } finally {
+        clearTimeout(timeout)
+      }
+    }
+  } finally {
+    databaseWriteRunning = false
+    if (!pendingDatabaseClear && pendingDatabaseChanges.size === 0) setPersistenceState('library', 'saved')
+  }
+}
+
+function saveToDatabase(changes: Record<string, Entry | null>, clearLibrary = false) {
+  if (hydrating) {
+    mutatedDuringHydration = true
+    return
+  }
+  if (clearLibrary) pendingDatabaseClear = true
+  for (const [key, value] of Object.entries(changes)) pendingDatabaseChanges.set(key, value)
+  if (pendingDatabaseClear || pendingDatabaseChanges.size > 0) void flushDatabaseChanges()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => void flushDatabaseChanges())
+}
+
+function diffEntries(before: Record<string, Entry>, after: Record<string, Entry>) {
+  const changes: Record<string, Entry | null> = {}
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)])
+  for (const key of keys) {
+    if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) changes[key] = after[key] ?? null
+  }
+  return changes
+}
 
 // Hydration completion signal
 const libraryHydrationListeners = new Set<() => void>()
@@ -202,47 +289,6 @@ export function subscribeLibraryHydrated(cb: () => void): () => void {
 export function isLibraryHydrated(): boolean {
   return !hydrating
 }
-function saveToDatabase(map: Record<string, Entry>) {
-  if (hydrating) {
-    mutatedDuringHydration = true
-    return
-  }
-  try {
-    if (typeof fetch !== 'function') return
-    pendingDatabaseBody = JSON.stringify(map)
-    if (databaseWriteRunning) return
-    databaseWriteRunning = true
-    void (async () => {
-      while (pendingDatabaseBody !== null) {
-        const body = pendingDatabaseBody
-        pendingDatabaseBody = null
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 8000)
-        try {
-          const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden'
-          const keepalive = hidden && new TextEncoder().encode(body).byteLength <= 64 * 1024
-          const res = await fetch(DB_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body,
-            keepalive,
-            signal: controller.signal,
-          })
-          if (!res.ok) console.warn(`[library] database rejected snapshot (${res.status})`)
-          else clearLegacyStorage()
-        } catch (e) {
-          console.warn('[library] database unavailable', e)
-        } finally {
-          clearTimeout(timeout)
-        }
-      }
-      databaseWriteRunning = false
-    })()
-  } catch {
-    /* a synchronously-throwing fetch must never break UI updates */
-  }
-}
-
 /**
  * Load the canonical database, merge any records from the previous browser
  * store, and persist that one-time migration before removing the old copy.
@@ -275,26 +321,36 @@ async function hydrateFromSqlite() {
         if (changedEntry) merged[key] = changedEntry
         else delete merged[key]
       }
-      const databaseChanged = clearedDuringHydration || stableStringify(merged) !== stableStringify(databaseSnapshot)
+      const changes = diffEntries(databaseSnapshot, merged)
+      const databaseChanged = Object.keys(changes).length > 0
       cache = merged
       snapshot = Object.values(merged)
       for (const fn of [...listeners]) {
         try { fn() } catch (e) { console.error('[library] subscriber failed', e) }
       }
-      if (databaseChanged || mutatedDuringHydration) saveToDatabase(merged)
-      else clearLegacyStorage()
+      if (databaseChanged || mutatedDuringHydration || clearedDuringHydration) saveToDatabase(changes, clearedDuringHydration)
+      else {
+        clearLegacyStorage()
+        setPersistenceState('library', 'saved')
+      }
+    } else {
+      // Keep legacy records and any edits made while hydration was pending.
+      // The server applies these as patches, so retrying cannot erase data it
+      // already holds even though its initial snapshot was unavailable.
+      const changes: Record<string, Entry | null> = { ...cache }
+      for (const [key, value] of changedDuringHydration) changes[key] = value
+      if (Object.keys(changes).length > 0 || clearedDuringHydration) saveToDatabase(changes, clearedDuringHydration)
+      else setPersistenceState('library', 'error')
     }
     mutatedDuringHydration = false
     notifyLibraryHydrated()
   }
 }
 
-function commit(next: Record<string, Entry>) {
+function commit(next: Record<string, Entry>, changes = diffEntries(cache, next), clearLibrary = false) {
   if (hydrating) {
-    const changedKeys = new Set([...Object.keys(cache), ...Object.keys(next)])
-    for (const key of changedKeys) {
-      if (JSON.stringify(cache[key]) !== JSON.stringify(next[key])) changedDuringHydration.set(key, next[key] ?? null)
-    }
+    for (const [key, value] of Object.entries(changes)) changedDuringHydration.set(key, value)
+    if (clearLibrary) clearedDuringHydration = true
   }
   cache = next
   snapshot = Object.values(next)
@@ -306,7 +362,7 @@ function commit(next: Record<string, Entry>) {
       console.error('[library] subscriber failed', e)
     }
   }
-  saveToDatabase(next)
+  saveToDatabase(changes, clearLibrary)
 }
 
 void hydrateFromSqlite()
@@ -346,14 +402,15 @@ export function useLibrary(subscribeToStore = true) {
       totalEpisodes: null,
       rewatches: [],
     }
-    commit({ ...cache, [key]: normalizeEntry({ ...base, ...patch }) })
+    const updated = normalizeEntry({ ...base, ...patch })
+    commit({ ...cache, [key]: updated }, { [key]: updated })
   }, [])
 
   const remove = useCallback((type: MediaType, id: number) => {
     if ((type !== 'movie' && type !== 'tv') || !Number.isSafeInteger(id) || id <= 0) return
     const next = { ...cache }
     delete next[entryKey(type, id)]
-    commit(next)
+    commit(next, { [entryKey(type, id)]: null })
   }, [])
 
   /**
@@ -390,7 +447,8 @@ export function useLibrary(subscribeToStore = true) {
     // An empty log is never "watched" — fall back to planned (dropped stays dropped).
     const status: Status = finished ? 'watched' : watched > 0 ? 'watching' : entry.status === 'dropped' ? 'dropped' : 'planned'
     const watchedAt = completionStamp(episodes, finished, entry.watchedAt, entry.status === 'watched')
-    commit({ ...cache, [key]: { ...entry, episodes, status, watchedAt } })
+    const updated = { ...entry, episodes, status, watchedAt }
+    commit({ ...cache, [key]: updated }, { [key]: updated })
   }, [])
 
   const setSeasonWatched = useCallback(
@@ -410,7 +468,8 @@ export function useLibrary(subscribeToStore = true) {
     const status: Status =
       finished ? 'watched' : count > 0 ? 'watching' : entry.status === 'dropped' ? 'dropped' : 'planned'
     const watchedAt = completionStamp(episodes, finished, entry.watchedAt, entry.status === 'watched')
-    commit({ ...cache, [key]: { ...entry, episodes, status, watchedAt } })
+    const updated = { ...entry, episodes, status, watchedAt }
+    commit({ ...cache, [key]: updated }, { [key]: updated })
     },
     [],
   )
@@ -423,7 +482,8 @@ export function useLibrary(subscribeToStore = true) {
     const stamp = at ?? Date.now()
     if (!isValidTimestamp(stamp)) return
     const rewatches = [...(entry.rewatches ?? []), stamp].sort((a, b) => a - b).slice(-MAX_REWATCHES)
-    commit({ ...cache, [key]: { ...entry, rewatches } })
+    const updated = { ...entry, rewatches }
+    commit({ ...cache, [key]: updated }, { [key]: updated })
   }, [])
 
   /** Rewrite one logged rewatch date by its index. */
@@ -435,7 +495,8 @@ export function useLibrary(subscribeToStore = true) {
     const rewatches = [...entry.rewatches]
     rewatches[index] = at
     rewatches.sort((a, b) => a - b)
-    commit({ ...cache, [key]: { ...entry, rewatches } })
+    const updated = { ...entry, rewatches }
+    commit({ ...cache, [key]: updated }, { [key]: updated })
   }, [])
 
   const removeRewatch = useCallback((type: MediaType, id: number, index: number) => {
@@ -443,12 +504,12 @@ export function useLibrary(subscribeToStore = true) {
     const entry = cache[key]
     if (!entry?.rewatches) return
     const rewatches = entry.rewatches.filter((_, i) => i !== index)
-    commit({ ...cache, [key]: { ...entry, rewatches } })
+    const updated = { ...entry, rewatches }
+    commit({ ...cache, [key]: updated }, { [key]: updated })
   }, [])
 
   const clear = useCallback(() => {
-    if (hydrating) clearedDuringHydration = true
-    commit({})
+    commit({}, Object.fromEntries(Object.keys(cache).map((key) => [key, null])), true)
   }, [])
   const replaceAll = useCallback((next: Record<string, Entry>) => commit(sanitizeMap(next)), [])
 
@@ -465,12 +526,6 @@ export function useLibrary(subscribeToStore = true) {
     replaceAll,
     clear,
   }
-}
-
-/** Order-insensitive JSON for comparing id-keyed maps across tabs. */
-function stableStringify(map: Record<string, Entry>): string {
-  const keys = Object.keys(map).sort()
-  return JSON.stringify(keys.map((k) => [k, map[k]]))
 }
 
 /** Preserve the previous browser store's values on collisions, fill missing

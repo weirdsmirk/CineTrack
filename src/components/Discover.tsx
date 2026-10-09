@@ -141,6 +141,7 @@ function ShelfRow({
   // A new mount gets a fresh hand; this seed stays stable across re-renders.
   const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0x1_0000_0000))
   const [busy, setBusy] = useState(false)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
   // Every shelf is assembled from page one, so refreshes walk forward from there.
   const pageRef = useRef(1)
   const busyRef = useRef(false)
@@ -169,6 +170,7 @@ function ShelfRow({
       const page = pageRef.current + 1
       const items = await shelf.load(page, controller.signal)
       if (controller.signal.aborted || items.length === 0) return
+      setRefreshError(null)
       pageRef.current = page
       const elsewhere = new Set<string>()
       for (const [otherKey, plates] of claims.current) {
@@ -183,7 +185,7 @@ function ShelfRow({
         return [...picked.filter((item) => !held.has(plateKey(item))), ...prev].slice(0, SHELF_POOL_CAP)
       })
     } catch {
-      // Offline or rate limited — the shelf keeps the plates it has.
+      if (!controller.signal.aborted) setRefreshError('Could not refresh this shelf. Check your connection and retry.')
     } finally {
       busyRef.current = false
       setBusy(false)
@@ -205,8 +207,9 @@ function ShelfRow({
         <button
           type="button"
           onClick={shuffle}
+          disabled={busy}
           aria-label={`Shuffle ${shelf.title} suggestions`}
-          className="press inline-flex shrink-0 items-center gap-1.5 border border-border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground"
+          className="press inline-flex shrink-0 items-center gap-1.5 border border-border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground disabled:cursor-wait disabled:opacity-60"
         >
           <span aria-hidden className={`inline-block text-[13px] leading-none ${busy ? 'animate-spin' : ''}`}>
             ↻
@@ -214,6 +217,14 @@ function ShelfRow({
           Shuffle
         </button>
       </div>
+      {refreshError && (
+        <div role="alert" className="mb-3 flex items-center justify-between gap-3 border border-[var(--primary)]/20 bg-[var(--primary)]/5 px-3 py-2">
+          <p className="font-sans text-[12px] text-[var(--primary)]">{refreshError}</p>
+          <button type="button" disabled={busy} onClick={() => void refresh()} className="press shrink-0 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-[var(--primary)] underline underline-offset-4 disabled:opacity-60">
+            Retry
+          </button>
+        </div>
+      )}
       <PosterGrid columns={columns}>
         {visible.map((item) => {
           const t: MediaType = (item.media_type ?? 'movie') as MediaType
@@ -235,17 +246,24 @@ function GenrePicker({
 }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!open) return
-    const onDown = (e: MouseEvent) => {
+    const focusFrame = requestAnimationFrame(() => wrap.current?.querySelector<HTMLButtonElement>('#discover-genre-filter button:not(:disabled)')?.focus())
+    const onDown = (e: PointerEvent) => {
       if (!wrap.current?.contains(e.target as Node)) setOpen(false)
     }
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
-    document.addEventListener('mousedown', onDown)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setOpen(false)
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('pointerdown', onDown)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onDown)
+      cancelAnimationFrame(focusFrame)
+      document.removeEventListener('pointerdown', onDown)
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
@@ -255,6 +273,7 @@ function GenrePicker({
   return (
     <div className="relative z-30 shrink-0" ref={wrap}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
@@ -279,6 +298,7 @@ function GenrePicker({
                 onClick={() => {
                   onSelect(null)
                   setOpen(false)
+                  triggerRef.current?.focus()
                 }}
                 className="press font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground underline underline-offset-4 hover:text-[var(--primary)]"
               >
@@ -292,6 +312,7 @@ function GenrePicker({
               onClick={() => {
                 onSelect(null)
                 setOpen(false)
+                triggerRef.current?.focus()
               }}
               className={`press shrink-0 whitespace-nowrap border px-2.5 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors ${
                 selected === null
@@ -310,6 +331,7 @@ function GenrePicker({
                   onClick={() => {
                     onSelect(isSelected ? null : g.id)
                     setOpen(false)
+                    triggerRef.current?.focus()
                   }}
                   className={`press shrink-0 whitespace-nowrap border px-2.5 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-colors ${
                     isSelected
@@ -608,7 +630,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
 
   const loadMoreRef = useRef<() => void>(() => {})
   const loadMore = useCallback(() => {
-    if (loadingRef.current || page >= totalPages) return
+    if (loadingRef.current || page >= totalPages || results.length >= 300) return
     loadingRef.current = true
     setLoading(true)
     const next = page + 1
@@ -635,7 +657,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
           loadingRef.current = false
         }
       })
-  }, [fetchPage, page, totalPages])
+  }, [fetchPage, page, results.length, totalPages])
 
   useEffect(() => { loadMoreRef.current = loadMore }, [loadMore])
 
@@ -654,7 +676,8 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
     return () => io.disconnect()
   }, [results.length, gridActive])
 
-  const exhausted = page >= totalPages && results.length > 0
+  const capped = results.length >= 300
+  const exhausted = (page >= totalPages || capped) && results.length > 0
 
   return (
     <div className="space-y-8">
@@ -662,6 +685,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
         title="Discover"
         fullBleed
         titleClassName="text-[56px] sm:text-[64px]"
+        headingLevel={1}
         right={<SearchInput value={query} onChange={setQuery} className="w-56 md:w-72" />}
       />
 
@@ -767,11 +791,13 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
                       setTotalPages(r.total_pages ?? 1)
                     })
                     .catch((e) => {
-                      if (e instanceof Error && e.message !== 'Request cancelled') setError(e.message)
+                      if (token === feedToken.current && e instanceof Error && e.message !== 'Request cancelled') setError(e.message)
                     })
                     .finally(() => {
-                      setLoading(false)
-                      loadingRef.current = false
+                      if (token === feedToken.current) {
+                        setLoading(false)
+                        loadingRef.current = false
+                      }
                     })
                 }}
                 className="press shrink-0 border border-[var(--primary)] bg-[var(--primary)] px-3 py-1 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-primary-foreground hover:opacity-90"
@@ -826,7 +852,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
           )}
           {exhausted && !loading && (
             <p className="animate-fade rule-label border-t border-border py-6 text-center">
-              End of catalogue · {results.length} records
+              {capped ? `Catalogue limit reached · first ${results.length} records shown` : `End of catalogue · ${results.length} records`}
             </p>
           )}
         </>

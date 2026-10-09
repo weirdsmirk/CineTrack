@@ -20,6 +20,7 @@ export default function InfoPage({ slug, onBack }: { slug: InfoSlug; onBack: () 
         title={meta?.label ?? 'Information'}
         note={`Last updated ${LAST_UPDATED}`}
         fullBleed
+        headingLevel={1}
         right={
           <button
             onClick={onBack}

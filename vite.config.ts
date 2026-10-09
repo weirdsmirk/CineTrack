@@ -494,7 +494,9 @@ function cinetrackSqlitePersistence(): Plugin {
   ) {
     try {
       const initDb = await openDb()
-      persist(initDb)
+      // Avoid rewriting a healthy database on every server start. A new
+      // empty database is still created at the canonical path immediately.
+      if (!fs.existsSync(DB_PATH)) persist(initDb)
       initDb.close()
     } catch (e) {
       server.config.logger.warn(`[cinetrack-sqlite] DB init: ${(e as Error).message}`)
@@ -750,9 +752,10 @@ function cinetrackSqlitePersistence(): Plugin {
                       if (!isSafeDbKey(key)) continue
                       const parsed = JSON.parse(json)
                       const encoded = JSON.stringify(parsed)
-                      if (encoded.length > MAX_BODY_BYTES || responseBytes + encoded.length > MAX_BODY_BYTES) continue
+                      const size = Buffer.byteLength(encoded) + Buffer.byteLength(key) + 4
+                      if (size > MAX_BODY_BYTES || responseBytes + size > MAX_BODY_BYTES) continue
                       out[key] = parsed
-                      responseBytes += encoded.length + key.length + 4
+                      responseBytes += size
                     } catch {
                       /* skip malformed */
                     }
@@ -774,19 +777,31 @@ function cinetrackSqlitePersistence(): Plugin {
                 if ((e as Error).message === 'PAYLOAD_TOO_LARGE') throw e
                 throw e
               })
-              let map: Record<string, any>
+              let payload: unknown
               try {
-                map = JSON.parse(buf.toString('utf8') || '{}') as Record<string, any>
+                payload = JSON.parse(buf.toString('utf8') || '{}')
               } catch {
                 res.statusCode = 400
                 res.setHeader('Content-Type', 'application/json')
                 res.end(JSON.stringify({ error: 'Invalid JSON' }))
                 return
               }
-              if (typeof map !== 'object' || map === null || Array.isArray(map)) {
+              if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
                 res.statusCode = 400
                 res.end(JSON.stringify({ error: 'Expected object' }))
                 return
+              }
+              let clearLibrary = false
+              let map = payload as Record<string, any>
+              if (Object.prototype.hasOwnProperty.call(map, 'changes')) {
+                const envelope = map
+                if (typeof envelope.changes !== 'object' || envelope.changes === null || Array.isArray(envelope.changes)) {
+                  res.statusCode = 400
+                  res.end(JSON.stringify({ error: 'Expected changes object' }))
+                  return
+                }
+                clearLibrary = envelope.clear === true
+                map = envelope.changes as Record<string, any>
               }
               if (Object.keys(map).length > 5000) {
                 res.statusCode = 413
@@ -798,16 +813,21 @@ function cinetrackSqlitePersistence(): Plugin {
                 const db = await openDb()
                 try {
                   db.run('BEGIN IMMEDIATE')
-                  db.run('DELETE FROM library')
-                  const stmt = db.prepare(`
-                    INSERT INTO library (
+                  if (clearLibrary) db.run('DELETE FROM library')
+                  const upsert = db.prepare(`
+                    INSERT OR REPLACE INTO library (
                       key, media_type, id, title, year, poster, backdrop, rating,
                       status, favorite, added_at, watched_at, runtime, total_episodes,
                       episodes, rewatches, note, json
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                   `)
+                  const remove = db.prepare('DELETE FROM library WHERE key = ?')
                   for (const [key, val] of Object.entries(map)) {
                     if (!isSafeDbKey(key)) continue
+                    if (val === null) {
+                      remove.run([key])
+                      continue
+                    }
                     if (!val || typeof val !== 'object') continue
                     const [mediaType, rawId] = key.split(':') as ['movie' | 'tv', string]
                     const id = Number(rawId)
@@ -829,11 +849,11 @@ function cinetrackSqlitePersistence(): Plugin {
                       mediaType,
                       title: typeof val.title === 'string' && val.title ? val.title.slice(0, 200) : 'Untitled',
                       year: typeof val.year === 'string' ? val.year.slice(0, 4) : '',
-                      poster: typeof val.poster === 'string' && val.poster.length <= 500 ? val.poster : null,
-                      backdrop: typeof val.backdrop === 'string' && val.backdrop.length <= 500 ? val.backdrop : null,
+                      poster: typeof val.poster === 'string' && val.poster.length <= 500 && /^\/[A-Za-z0-9/_\-.]+$/.test(val.poster) && !val.poster.includes('..') ? val.poster : null,
+                      backdrop: typeof val.backdrop === 'string' && val.backdrop.length <= 500 && /^\/[A-Za-z0-9/_\-.]+$/.test(val.backdrop) && !val.backdrop.includes('..') ? val.backdrop : null,
                       rating: typeof val.rating === 'number' && Number.isInteger(val.rating) && val.rating >= 1 && val.rating <= 10 ? val.rating : null,
                       status: ['planned', 'watching', 'watched', 'dropped'].includes(val.status) ? val.status : 'planned',
-                      favorite: !!val.favorite,
+                      favorite: val.favorite === true,
                       addedAt,
                       watchedAt,
                       runtime: typeof val.runtime === 'number' && Number.isFinite(val.runtime) ? Math.min(600, Math.max(0, Math.floor(val.runtime))) : null,
@@ -842,7 +862,7 @@ function cinetrackSqlitePersistence(): Plugin {
                       rewatches,
                       ...(typeof val.note === 'string' ? { note: val.note.slice(0, 2000) } : {}),
                     }
-                    stmt.run([
+                    upsert.run([
                       key,
                       normalized.mediaType,
                       normalized.id,
@@ -863,7 +883,8 @@ function cinetrackSqlitePersistence(): Plugin {
                       JSON.stringify(normalized),
                     ])
                   }
-                  stmt.free()
+                  upsert.free()
+                  remove.free()
                   db.run('COMMIT')
                   persist(db)
                 } catch (e) {
@@ -915,9 +936,10 @@ function cinetrackSqlitePersistence(): Plugin {
                       if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue
                       const parsed = JSON.parse(v)
                       const encoded = JSON.stringify(parsed)
-                      if (encoded.length > MAX_BODY_BYTES_SETTINGS || responseBytes + encoded.length > MAX_BODY_BYTES_SETTINGS) continue
+                      const size = Buffer.byteLength(encoded) + Buffer.byteLength(k) + 4
+                      if (size > MAX_BODY_BYTES_SETTINGS || responseBytes + size > MAX_BODY_BYTES_SETTINGS) continue
                       out[k] = parsed
-                      responseBytes += encoded.length + k.length + 4
+                      responseBytes += size
                     } catch {
                       if (responseBytes + v.length + k.length + 4 <= MAX_BODY_BYTES_SETTINGS) {
                         out[k] = v
@@ -957,7 +979,6 @@ function cinetrackSqlitePersistence(): Plugin {
                 const db = await openDb()
                 try {
                   db.run('BEGIN IMMEDIATE')
-                  db.run('DELETE FROM settings')
                   const stmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
                   for (const [k, v] of Object.entries(settingsMap)) {
                     if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue

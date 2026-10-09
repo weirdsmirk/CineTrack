@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ARCHIVE_NAME_MAX_LENGTH, DEFAULT_ARCHIVE_NAME, LANGUAGES, THEMES, useSettings } from '../lib/settings'
 import { minutesWatched, parseLibraryImport, useLibrary, watchedCount } from '../lib/library'
-import { ConfirmDialog, Chip, SETTINGS_PANEL_ID, useBodyScrollLock, useFocusTrap } from './ui'
+import { ConfirmDialog, Chip, SETTINGS_PANEL_ID, handleRadioGroupKeyDown, useBodyScrollLock, useFocusTrap } from './ui'
 import { useToast } from './Toast'
 
 export default function SettingsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -579,7 +579,7 @@ function OptionsRow<T extends string>({
     <div>
       <span className="block text-[13px]">{label}</span>
       {note && <span className="rule-label mt-0.5 block">{note}</span>}
-      <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
+      <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label={label} onKeyDown={handleRadioGroupKeyDown}>
         {options.map((o) => (
           <Chip key={o.id} role="radio" active={value === o.id} onClick={() => onChange(o.id)}>
             {o.label}

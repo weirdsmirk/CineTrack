@@ -26,13 +26,13 @@ export default function MastheadName({ name, italicWordIndex = -1 }: { name: str
   })
 
   return (
-    <>
-      <span className="block whitespace-nowrap animate-rise [animation-delay:60ms]">{renderWords(words.slice(0, splitAt), 0)}</span>
+    <div className="line-clamp-2 [overflow-wrap:anywhere]">
+      <span className="block animate-rise [animation-delay:60ms]">{renderWords(words.slice(0, splitAt), 0)}</span>
       {splitAt < words.length && (
-        <span className="block whitespace-nowrap animate-rise [animation-delay:180ms]">
+        <span className="block animate-rise [animation-delay:180ms]">
           {renderWords(words.slice(splitAt), splitAt)}
         </span>
       )}
-    </>
+    </div>
   )
 }

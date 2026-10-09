@@ -54,43 +54,51 @@ export default function MonthlyChart({ entries }: { entries: Entry[] }) {
             <p className="text-[12px] text-muted-foreground">Finished movies and series will chart here.</p>
           </div>
         ) : (
-          <div
-            role="img"
-            aria-label={`Completions per month. ${total} total. Busiest month ${busiest.label} with ${busiest.count}.`}
-          >
-            <ResponsiveContainer width="100%" height={220} minWidth={0} minHeight={220} debounce={50}>
-              <AreaChart data={chart} margin={{ top: 12, right: 16, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="monthlyFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.32} />
-                    <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid vertical={false} stroke="var(--border)" strokeOpacity={0.7} />
-                <XAxis
-                  dataKey="label"
-                  stroke="var(--muted-foreground)"
-                  fontSize={10}
-                  tickLine={false}
-                  axisLine={false}
-                  dy={8}
-                  fontFamily="var(--font-sans)"
-                />
-                <YAxis hide domain={[0, 'auto']} />
-                <Tooltip content={<ChartTip />} cursor={{ stroke: 'var(--primary)', strokeOpacity: 0.35 }} />
-                <Area
-                  type="monotone"
-                  dataKey="count"
-                  stroke="var(--primary)"
-                  strokeWidth={2}
-                  fill="url(#monthlyFill)"
-                  dot={<MonthDot />}
-                  activeDot={{ r: 4, fill: 'var(--primary)', stroke: 'var(--background)', strokeWidth: 2 }}
-                  isAnimationActive={!reduceMotion}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <>
+            <div aria-hidden="true">
+              <ResponsiveContainer width="100%" height={220} minWidth={0} minHeight={220} debounce={50}>
+                <AreaChart data={chart} margin={{ top: 12, right: 16, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="monthlyFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.32} />
+                      <stop offset="100%" stopColor="var(--primary)" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid vertical={false} stroke="var(--border)" strokeOpacity={0.7} />
+                  <XAxis
+                    dataKey="label"
+                    stroke="var(--muted-foreground)"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    dy={8}
+                    fontFamily="var(--font-sans)"
+                  />
+                  <YAxis hide domain={[0, 'auto']} />
+                  <Tooltip content={<ChartTip />} cursor={{ stroke: 'var(--primary)', strokeOpacity: 0.35 }} />
+                  <Area
+                    type="monotone"
+                    dataKey="count"
+                    stroke="var(--primary)"
+                    strokeWidth={2}
+                    fill="url(#monthlyFill)"
+                    dot={<MonthDot />}
+                    activeDot={{ r: 4, fill: 'var(--primary)', stroke: 'var(--background)', strokeWidth: 2 }}
+                    isAnimationActive={!reduceMotion}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="sr-only">
+              <h3>Monthly completions</h3>
+              <p>{total} titles completed. Busiest month: {busiest.label}, with {busiest.count} titles.</p>
+              <ul>
+                {chart.map((month) => (
+                  <li key={month.label}>{month.label}: {month.count} {month.count === 1 ? 'title' : 'titles'}</li>
+                ))}
+              </ul>
+            </div>
+          </>
         )}
       </div>
     </section>

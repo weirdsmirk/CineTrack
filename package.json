@@ -10,8 +10,9 @@
     "start": "vite preview --host 127.0.0.1",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "audit": "env -u npm_config_allow_scripts npm audit --omit=dev --ignore-scripts",
-    "verify": "npm run typecheck && npm run build"
+    "test": "node --test",
+    "audit": "npm audit --ignore-scripts",
+    "verify": "npm run typecheck && npm test && npm run build"
   },
   "engines": {
     "node": ">=22.12.0"

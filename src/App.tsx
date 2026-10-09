@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { type MediaType, type TmdbTitle } from './lib/tmdb'
 import { useLibrary } from './lib/library'
 import { useSettings } from './lib/settings'
+import { usePersistenceState, type PersistenceState } from './lib/persistence'
 import { Logo, SETTINGS_PANEL_ID, Spinner } from './components/ui'
 import InfoPage, { INFO_LINKS, type InfoSlug } from './components/InfoPages'
 
@@ -42,6 +43,7 @@ export default function App() {
   const [settingsMounted, setSettingsMounted] = useState(false)
   const { entries } = useLibrary()
   const { settings } = useSettings()
+  const persistenceState = usePersistenceState()
 
   useEffect(() => {
     if (settingsOpen) setSettingsMounted(true)
@@ -207,7 +209,7 @@ export default function App() {
         </Suspense>
       </main>
 
-      <Footer entries={entries.length} onInfo={setInfo} onSettings={() => setSettingsOpen(true)} />
+      <Footer entries={entries.length} persistenceState={persistenceState} onInfo={setInfo} onSettings={() => setSettingsOpen(true)} />
 
       <Suspense fallback={null}>
         {settingsMounted && <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />}
@@ -228,10 +230,12 @@ export default function App() {
 
 function Footer({
   entries,
+  persistenceState,
   onInfo,
   onSettings,
 }: {
   entries: number
+  persistenceState: PersistenceState
   onInfo: (slug: InfoSlug) => void
   onSettings: () => void
 }) {
@@ -243,7 +247,15 @@ function Footer({
           <p className="mt-4 max-w-[36ch] text-[13px] leading-relaxed text-muted-foreground">
             A personal moving-image archive for the films and series you watch — catalogued, tracked, and stored locally.
           </p>
-          <p className="rule-label mt-4">{entries} titles held · Stored on this device</p>
+          <p className="rule-label mt-4" role="status" aria-live="polite">
+            {entries} titles held · {persistenceState === 'saved'
+              ? 'Saved on this device'
+              : persistenceState === 'error'
+                ? 'Database unavailable'
+                : persistenceState === 'loading'
+                  ? 'Loading local collection'
+                  : 'Saving to this device'}
+          </p>
         </div>
 
         <nav className="flex flex-col gap-2.5">

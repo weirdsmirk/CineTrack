@@ -1,4 +1,5 @@
 import { useCallback, useSyncExternalStore } from 'react'
+import { setPersistenceState } from './persistence'
 
 export type ThemeId = 'paper' | 'halide' | 'velvet' | 'blueprint'
 
@@ -212,22 +213,33 @@ try {
 } catch {}
 
 const SETTINGS_ENDPOINT = '/__data/settings'
-let pendingSettingsBody: string | null = null
+const pendingSettingsChanges = new Map<string, unknown>()
 let settingsWriteRunning = false
+let settingsRetryTimer: ReturnType<typeof setTimeout> | null = null
+let settingsRetryDelay = 1000
 
-function saveToDatabase(s: Settings) {
-  if (typeof fetch !== 'function') return
-  if (hydrating) {
-    hasMutatedDuringHydration = true
-    return
+function scheduleSettingsRetry() {
+  if (settingsRetryTimer) return
+  settingsRetryTimer = setTimeout(() => {
+    settingsRetryTimer = null
+    void flushSettingsChanges()
+  }, settingsRetryDelay)
+  settingsRetryDelay = Math.min(settingsRetryDelay * 2, 30_000)
+}
+
+async function flushSettingsChanges() {
+  if (settingsWriteRunning || pendingSettingsChanges.size === 0) return
+  if (settingsRetryTimer) {
+    clearTimeout(settingsRetryTimer)
+    settingsRetryTimer = null
   }
-  pendingSettingsBody = JSON.stringify(withExtras(s))
-  if (settingsWriteRunning) return
   settingsWriteRunning = true
-  void (async () => {
-    while (pendingSettingsBody !== null) {
-      const body = pendingSettingsBody
-      pendingSettingsBody = null
+  setPersistenceState('settings', 'saving')
+  try {
+    while (pendingSettingsChanges.size > 0) {
+      const changes = Object.fromEntries(pendingSettingsChanges)
+      pendingSettingsChanges.clear()
+      const body = JSON.stringify(changes)
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 8000)
       try {
@@ -240,16 +252,38 @@ function saveToDatabase(s: Settings) {
           keepalive,
           signal: controller.signal,
         })
-        if (!res.ok) console.warn(`[settings] database rejected settings (${res.status})`)
-        else clearLegacyStorage()
+        if (!res.ok) throw new Error(`Database rejected settings (${res.status})`)
+        clearLegacyStorage()
+        settingsRetryDelay = 1000
       } catch (e) {
-        console.warn('[settings] database unavailable', e)
+        for (const [key, value] of Object.entries(changes)) {
+          if (!pendingSettingsChanges.has(key)) pendingSettingsChanges.set(key, value)
+        }
+        console.warn('[settings] database unavailable; changes will be retried', e)
+        setPersistenceState('settings', 'error')
+        scheduleSettingsRetry()
+        break
       } finally {
         clearTimeout(timeout)
       }
     }
+  } finally {
     settingsWriteRunning = false
-  })()
+    if (pendingSettingsChanges.size === 0) setPersistenceState('settings', 'saved')
+  }
+}
+
+function saveToDatabase(changes: Record<string, unknown>) {
+  if (hydrating) {
+    hasMutatedDuringHydration = true
+    return
+  }
+  for (const [key, value] of Object.entries(changes)) pendingSettingsChanges.set(key, value)
+  if (pendingSettingsChanges.size > 0) void flushSettingsChanges()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => void flushSettingsChanges())
 }
 
 async function hydrateFromSqlite() {
@@ -283,9 +317,36 @@ async function hydrateFromSqlite() {
       }
       cache = sanitize(merged)
       try { applyTheme(cache.theme) } catch {}
-      if (legacySettingsPresent || hasMutatedDuringHydration) saveToDatabase(cache)
-      else clearLegacyStorage()
+      const current = withExtras(cache)
+      const changes: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(current)) {
+        if (JSON.stringify(stored[key]) !== JSON.stringify(value)) changes[key] = value
+      }
+      if (legacySettingsPresent || hasMutatedDuringHydration) {
+        if (Object.keys(changes).length > 0) saveToDatabase(changes)
+        else {
+          clearLegacyStorage()
+          setPersistenceState('settings', 'saved')
+        }
+      } else {
+        clearLegacyStorage()
+        setPersistenceState('settings', 'saved')
+      }
       notify()
+    } else {
+      // Retry only legacy custom values and explicit edits. Defaults are not
+      // written over settings that could not be read during this request.
+      const changes: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(cache)) {
+        if (dirtyKeys.has(key as keyof Settings) || JSON.stringify(value) !== JSON.stringify(DEFAULTS[key as keyof Settings])) {
+          changes[key] = value
+        }
+      }
+      if (legacySettingsPresent || hasMutatedDuringHydration) {
+        for (const [key, value] of Object.entries(extraKeys)) changes[key] = value
+      }
+      if (Object.keys(changes).length > 0) saveToDatabase(changes)
+      else setPersistenceState('settings', 'error')
     }
     notifySettingsHydrated()
     hasMutatedDuringHydration = false
@@ -333,7 +394,7 @@ export function useSettings() {
         applyTheme(cache.theme)
       } catch {}
     if (hydrating) hasMutatedDuringHydration = true
-    else saveToDatabase(cache)
+    else saveToDatabase({ [key]: cache[key] })
     notify()
   }, [])
 

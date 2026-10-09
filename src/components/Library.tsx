@@ -88,6 +88,7 @@ export default function Library({
       <SectionHead
         title="Library"
         fullBleed
+        headingLevel={1}
         titleClassName="text-[56px] sm:text-[64px]"
         right={
           <SearchInput value={q} onChange={setQ} className="w-56 md:w-72" />
@@ -214,8 +215,8 @@ function FilterBar({
     const trigger = triggerRef.current
     if (!trigger) return
     const rect = trigger.getBoundingClientRect()
-    const popoverWidth = 300
     const viewportWidth = window.innerWidth
+    const popoverWidth = Math.min(300, viewportWidth - 32)
     const left = Math.min(rect.right - popoverWidth, viewportWidth - popoverWidth - 16)
     const top = rect.bottom + 8
     setPopoverStyle({ left: `${Math.max(16, left)}px`, top: `${top}px` })
@@ -236,6 +237,7 @@ function FilterBar({
         raf2 = requestAnimationFrame(() => {
           setShown(true)
           updatePosition()
+          boxRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
         })
       })
       const onKey = (e: KeyboardEvent) => {
@@ -245,14 +247,20 @@ function FilterBar({
           triggerRef.current?.focus()
         }
       }
+      const onPointerDown = (e: PointerEvent) => {
+        const target = e.target as Node
+        if (!boxRef.current?.contains(target) && !triggerRef.current?.contains(target)) setOpen(false)
+      }
       const onResize = () => updatePosition()
       window.addEventListener('keydown', onKey, true)
+      document.addEventListener('pointerdown', onPointerDown)
       window.addEventListener('resize', onResize)
       window.addEventListener('scroll', onResize, true)
       return () => {
         cancelAnimationFrame(raf1)
         cancelAnimationFrame(raf2)
         window.removeEventListener('keydown', onKey, true)
+        document.removeEventListener('pointerdown', onPointerDown)
         window.removeEventListener('resize', onResize)
         window.removeEventListener('scroll', onResize, true)
       }
@@ -273,7 +281,7 @@ function FilterBar({
       role="dialog"
       aria-label="Filter library"
       style={popoverStyle}
-      className="quiet-scroll animate-[ct-tick_180ms_var(--ease-sheet)_both] fixed z-[100] max-h-[min(70vh,520px)] w-[300px] origin-top-right overflow-y-auto border border-border bg-background p-4 shadow-[0_12px_40px_rgba(0,0,0,0.22)]"
+      className="quiet-scroll animate-[ct-tick_180ms_var(--ease-sheet)_both] fixed z-[100] max-h-[min(70vh,520px)] w-[300px] max-w-[calc(100vw-32px)] origin-top-right overflow-y-auto border border-border bg-background p-4 shadow-[0_12px_40px_rgba(0,0,0,0.22)]"
     >
       <div className="rule-label mb-3 border-b border-border pb-2">
         {count} shown · sorted by {sortLabel}
@@ -294,6 +302,7 @@ function FilterBar({
               onClick={() => {
                 onFilter(f)
                 setOpen(false)
+                triggerRef.current?.focus()
               }}
               aria-pressed={isActive}
               className={`press shrink-0 whitespace-nowrap border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] ${isActive ? activeStyle : inactiveStyle}`}
@@ -305,14 +314,14 @@ function FilterBar({
       </FilterGroup>
       <FilterGroup label="Order">
         {SORTS.map((s) => (
-          <Chip key={s.id} active={sort === s.id} onClick={() => { onSort(s.id); setOpen(false); }}>
+          <Chip key={s.id} active={sort === s.id} onClick={() => { onSort(s.id); setOpen(false); triggerRef.current?.focus(); }}>
             {s.label}
           </Chip>
         ))}
       </FilterGroup>
       <FilterGroup label="Minimum rating">
         {RATING_OPTIONS.map((r) => (
-          <Chip key={r.id} active={minRating === r.id} onClick={() => { onMinRating(r.id); setOpen(false); }}>
+          <Chip key={r.id} active={minRating === r.id} onClick={() => { onMinRating(r.id); setOpen(false); triggerRef.current?.focus(); }}>
             {r.label}
           </Chip>
         ))}
@@ -324,6 +333,7 @@ function FilterBar({
             onSort(settings.defaultSort)
             onMinRating(0)
             setOpen(false)
+            triggerRef.current?.focus()
           }}
           className="press mt-1 font-sans text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground underline underline-offset-4 hover:text-[var(--primary)]"
         >

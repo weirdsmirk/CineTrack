@@ -23,7 +23,7 @@ import {
   type Status,
 } from '../lib/library'
 import { useSettings } from '../lib/settings'
-import { CarouselNav, ConfirmDialog, Spinner, STATUS_BADGE, STATUS_INACTIVE, STATUS_STYLE, useBodyScrollLock, useFocusTrap, usePosterArt, useTimedTooltip } from './ui'
+import { CarouselNav, ConfirmDialog, Spinner, STATUS_BADGE, STATUS_INACTIVE, STATUS_STYLE, handleRadioGroupKeyDown, useBodyScrollLock, useFocusTrap, usePosterArt, useTimedTooltip } from './ui'
 import { useToast } from './Toast'
 import CastDetail from './CastDetail'
 
@@ -1273,11 +1273,12 @@ function EditModal({
 
         <div className="quiet-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4.5 py-3.5">
           <Field label={`Your rating${draftRating ? ` · ${draftRating}/10` : ' · Unrated'}`}>
-            <div className="flex gap-1" role="radiogroup" aria-label="Your rating">
+            <div className="flex gap-1" role="radiogroup" aria-label="Your rating" onKeyDown={handleRadioGroupKeyDown}>
               <button
                 type="button"
                 role="radio"
                 aria-checked={draftRating === null}
+                tabIndex={draftRating === null ? 0 : -1}
                 onClick={() => setDraftRating(null)}
                 aria-label="Set as unrated"
                 title="Set as unrated"
@@ -1298,7 +1299,8 @@ function EditModal({
                   type="button"
                   role="radio"
                   aria-checked={draftRating === n}
-                  onClick={() => setDraftRating(draftRating === n ? null : n)}
+                  tabIndex={draftRating === n ? 0 : -1}
+                  onClick={() => setDraftRating(n)}
                   aria-label={`Rate ${n}`}
                   className={`press aspect-square flex-1 border font-sans text-[11px] font-medium tabular-nums ${
                     draftRating && n <= draftRating

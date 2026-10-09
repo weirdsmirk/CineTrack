@@ -165,7 +165,8 @@ export function StatusBadge({ status }: { status: Status }) {
   )
 }
 
-export function SectionHead({ index, title, note, right, rule = true, fullBleed = false, titleClassName }: { index?: string; title: string; note?: string; right?: ReactNode; rule?: boolean; fullBleed?: boolean; titleClassName?: string }) {
+export function SectionHead({ index, title, note, right, rule = true, fullBleed = false, titleClassName, headingLevel = 2 }: { index?: string; title: string; note?: string; right?: ReactNode; rule?: boolean; fullBleed?: boolean; titleClassName?: string; headingLevel?: 1 | 2 | 3 }) {
+  const Heading = `h${headingLevel}` as 'h1' | 'h2' | 'h3'
   return (
     <div className={`relative z-30 flex items-end justify-between gap-6 ${rule ? 'mb-6 pb-3' : 'mb-4'}`}>
       {/* The rule beneath the head draws itself in rather than appearing. */}
@@ -180,7 +181,7 @@ export function SectionHead({ index, title, note, right, rule = true, fullBleed 
       <div className="flex items-baseline gap-4 min-w-0">
         {index && <span className="animate-fade font-sans text-[11px] tracking-[0.2em] text-[var(--accent)]">{index}</span>}
         <div className="min-w-0">
-          <h2 className={`font-display text-[34px] sm:text-[38px] italic leading-none tracking-tight ${titleClassName ?? ''}`}>{title}</h2>
+          <Heading className={`font-display text-[34px] sm:text-[38px] italic leading-none tracking-tight ${titleClassName ?? ''}`}>{title}</Heading>
           {note && <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground whitespace-normal md:whitespace-nowrap">{note}</p>}
         </div>
       </div>
@@ -257,6 +258,7 @@ export function Chip({
       type="button"
       onClick={onClick}
       role={role}
+      tabIndex={role === 'radio' ? (active ? 0 : -1) : undefined}
       aria-pressed={role ? undefined : active ? 'true' : 'false'}
       aria-checked={role === 'radio' ? active : undefined}
       className={`press shrink-0 whitespace-nowrap border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.14em] ${
@@ -268,6 +270,23 @@ export function Chip({
       {children}
     </button>
   )
+}
+
+/** Apply the standard arrow/Home/End interaction to buttons in a radio group. */
+export function handleRadioGroupKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+  const radios = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)'))
+  const currentRadio = (event.target as HTMLElement).closest<HTMLButtonElement>('[role="radio"]')
+  const current = currentRadio ? radios.indexOf(currentRadio) : -1
+  if (!radios.length || current < 0) return
+  let next = current
+  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (current + 1) % radios.length
+  else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (current - 1 + radios.length) % radios.length
+  else if (event.key === 'Home') next = 0
+  else if (event.key === 'End') next = radios.length - 1
+  else return
+  event.preventDefault()
+  radios[next]?.focus()
+  radios[next]?.click()
 }
 
 export function CarouselNav({
