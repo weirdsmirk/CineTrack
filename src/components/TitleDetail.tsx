@@ -947,7 +947,7 @@ setShown(false)
           </button>
         </header>
 
-        <div className="space-y-1.5 p-3.5">
+        <div className="space-y-2.5 p-3.5">
           {options.map((s) => {
             const active = status === s
             return (
