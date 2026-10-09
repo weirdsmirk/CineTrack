@@ -1,7 +1,8 @@
 import { Suspense, lazy, useMemo, useState } from 'react'
 import { img, type MediaType, type TmdbTitle } from '../lib/tmdb'
-import { countShowRewatches, countStatuses, formatDayMonth, formatRelativeDay, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
+import { countRewatches, countStatuses, formatDayMonth, formatRelativeDay, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
 import { useSettings } from '../lib/settings'
+import type { LibraryView } from './Library'
 import { Empty, SectionHead, Stat } from './ui'
 import MastheadName from './MastheadName'
 
@@ -47,7 +48,13 @@ function pickDiverse<T extends { title: string }>(items: T[], count: number) {
   return picks
 }
 
-export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void }) {
+export default function Home({
+  onOpen,
+  onLibraryNavigate,
+}: {
+  onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void
+  onLibraryNavigate: (view: LibraryView) => void
+}) {
   const { entries } = useLibrary()
   const { settings } = useSettings()
 
@@ -61,8 +68,9 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
     const rated = entries.filter((e) => e.rating)
     return {
       total: entries.length,
+      favorites: entries.filter((e) => e.favorite).length,
       dropped: statuses.dropped,
-      rewatches: countShowRewatches(entries),
+      rewatches: countRewatches(entries),
       moviesSeen,
       moviesTotal: movies.length,
       showsSeen,
@@ -75,7 +83,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
     }
   }, [entries])
 
-  const activity = useMemo(() => recentCompletions(entries, 7), [entries])
+  const activity = useMemo(() => recentCompletions(entries, 10), [entries])
   const hasData = entries.length > 0
 
   const [shuffleKey, setShuffleKey] = useState(0)
@@ -93,18 +101,19 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
             <MastheadName name={settings.archiveName} italicWordIndex={settings.archiveItalicWordIndex} />
           </h1>
         </div>
-        <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-6">
-          <Stat label="Titles held" value={stats.total} />
-          <Stat label="Movies seen" value={stats.moviesSeen} unit={`/ ${stats.moviesTotal}`} />
-          <Stat label="Shows seen" value={stats.showsSeen} unit={`/ ${stats.showsTotal}`} />
-          <Stat label="Dropped" value={stats.dropped} />
-          <Stat label="Rewatches" value={stats.rewatches} />
-          <Stat label="Time in seat" value={stats.hours} unit="hrs" />
+        <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-7">
+          <Stat label="Titles held" value={stats.total} onClick={() => onLibraryNavigate({ tab: 'all', filter: 'all' })} />
+          <Stat label="Films seen" value={stats.moviesSeen} unit={`/ ${stats.moviesTotal}`} onClick={() => onLibraryNavigate({ tab: 'movie', filter: 'watched' })} />
+          <Stat label="Shows seen" value={stats.showsSeen} unit={`/ ${stats.showsTotal}`} onClick={() => onLibraryNavigate({ tab: 'tv', filter: 'watched' })} />
+          <Stat label="Favourites" value={stats.favorites} onClick={() => onLibraryNavigate({ tab: 'favorites', filter: 'all' })} />
+          <Stat label="Dropped" value={stats.dropped} onClick={() => onLibraryNavigate({ tab: 'tv', filter: 'dropped' })} />
+          <Stat label="Rewatches" value={stats.rewatches} onClick={() => onLibraryNavigate({ tab: 'all', filter: 'rewatched' })} />
+          <Stat label="Time in seat" value={stats.hours} unit="hrs" onClick={() => document.getElementById('monthly-log')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })} />
         </div>
       </section>
 
       <section>
-        <SectionHead title="Currently in progress" note="Series, movies, and rewatches left mid-viewing." rule={false} />
+        <SectionHead title="Currently in progress" note="Series, films, and rewatches left mid-viewing." rule={false} />
         {stats.inProgress.length === 0 ? (
           <Empty>Nothing underway — visit Discover to begin a title</Empty>
         ) : (
@@ -136,7 +145,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
                   <span className="rule-label">
                     {e.mediaType === 'tv'
                       ? `${e.rewatching ? Object.keys(e.rewatchEpisodes).length : watchedCount(e)} of ${e.totalEpisodes ?? '?'} episodes${e.rewatching ? ' · Rewatching' : ''}`
-                      : 'Movie · in progress'}
+                      : 'Film · in progress'}
                   </span>
                   {e.mediaType === 'tv' && (
                     <span className="mt-2 block h-[3px] w-full bg-secondary">
@@ -158,7 +167,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
         )}
       </section>
 
-      <section className="grid gap-12 md:grid-cols-[1.2fr_1fr]">
+      <section className="grid gap-8 md:grid-cols-[1.2fr_1fr] xl:grid-cols-[1fr_1.2fr]">
         <div>
           <SectionHead title="Recently watched" note="A running ledger of the last entries marked seen." rule={false} />
           {activity.length === 0 ? (
@@ -169,14 +178,16 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
                 <li key={`${a.entry.id}-${a.at}-${i}`} className="animate-rise" style={{ animationDelay: `${i * 40}ms` }}>
                   <button
                     onClick={() => onOpen(a.entry.mediaType, a.entry.id)}
-                    className="group flex w-full items-baseline gap-4 py-3 text-left transition-colors duration-200 hover:text-[var(--primary)]"
+                    className="group flex w-full items-baseline gap-4 py-[12.5px] text-left transition-colors duration-200 hover:text-[var(--primary)]"
                   >
-                    <span className="w-16 shrink-0 font-sans text-[10px] tabular-nums text-[var(--accent)]">{a.label}</span>
                     <span className="min-w-0 flex-1 truncate font-sans text-[16px] transition-transform duration-300 group-hover:translate-x-1">
                       {a.entry.title}
                     </span>
-                    <span className="shrink-0 font-sans text-[10px] tabular-nums text-muted-foreground">
-                      {settings.dateStyle === 'relative' ? formatRelativeDay(a.at) : formatDayMonth(a.at)}
+                    <span className="flex shrink-0 items-baseline gap-3 sm:gap-5">
+                      <span className="font-sans text-[10px] text-[var(--accent)]">{a.label}</span>
+                      <span className="min-w-[3.5rem] text-right font-sans text-[10px] tabular-nums text-muted-foreground">
+                        {settings.dateStyle === 'relative' ? formatRelativeDay(a.at) : formatDayMonth(a.at)}
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -185,7 +196,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
           )}
         </div>
 
-        <div className="flex flex-col">
+        <div className="flex min-w-0 flex-col">
           <SectionHead
             title="Feeling lucky?"
             note="Three random picks from your shelf."
@@ -194,70 +205,77 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
               stats.planned.length > 3 ? (
                 <button
                   onClick={() => setShuffleKey((k) => k + 1)}
-                  className="press inline-flex items-center gap-1.5 border border-border px-3 py-1.5 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground"
+                  aria-label="Shuffle recommendations"
+                  className="press inline-flex items-center gap-2 border border-border px-3.5 py-2 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground transition-colors hover:border-[var(--primary)] hover:text-[var(--primary)]"
                 >
-                  <span aria-hidden className="text-[13px] leading-none">↻</span> Shuffle
+                  <span aria-hidden className="text-[14px] leading-none">↻</span> Shuffle
                 </button>
               ) : undefined
             }
           />
           {stats.planned.length === 0 ? (
-            <Empty>
-              Watchlist empty —{' '}
-              <a href="#discover" className="underline underline-offset-4 hover:text-[var(--primary)]">
-                add titles from Discover
-              </a>
-            </Empty>
-          ) : (
-            <div className="space-y-3">
-              {suggestions.map((e, i) => (
-                <button
-                  key={`${e.mediaType}-${e.id}-${shuffleKey}-${i}`}
-                  onClick={() => onOpen(e.mediaType, e.id)}
-                  style={{ animationDelay: `${i * 60}ms` }}
-                  className="group animate-rise flex w-full gap-4 border border-border bg-card p-3 text-left transition-colors duration-300 hover:border-[var(--foreground)] hover:bg-background"
-                >
-                  <div className="h-[86px] w-[58px] shrink-0 overflow-hidden border border-border bg-muted">
-                    {img(e.poster, 'w185') ? (
-                      <img src={img(e.poster, 'w185')!} alt="" loading="lazy" decoding="async" width={58} height={87} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center font-display text-[18px] text-muted-foreground">
-                        {e.title.slice(0, 1)}
-                      </div>
-                    )}
-                  </div>
-                  <span className="min-w-0 flex-1 py-1">
-                    <span className="block truncate font-sans text-[16px] leading-tight group-hover:text-[var(--primary)]">{e.title}</span>
-                    <span className="rule-label mt-1 block">
-                      {e.mediaType === 'movie' ? 'Movie' : 'TV'} · {e.year || '—'}
-                    </span>
-                    <span className="mt-2 inline-flex items-center gap-1 font-sans text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground group-hover:text-[var(--primary)]">
-                      View <span aria-hidden>→</span>
-                    </span>
-                  </span>
-                  <span className="hidden shrink-0 self-center font-sans text-[10px] tabular-nums text-muted-foreground sm:block">
-                    0{i + 1}
-                  </span>
-                </button>
-              ))}
-              <p className="rule-label mt-auto pt-4">
-                {stats.planned.length} on the shelf · {suggestions.length} shown
+            <div className="flex min-h-40 items-center gap-5 border border-dashed border-border px-6 py-8">
+              <span aria-hidden className="font-display text-4xl italic text-[var(--primary)]">∅</span>
+              <p className="max-w-[34ch] text-[13px] leading-relaxed text-muted-foreground">
+                Your watchlist is waiting for its first feature.{' '}
+                <a href="#discover" className="text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-[var(--primary)]">
+                  Find something in Discover <span aria-hidden>→</span>
+                </a>
               </p>
             </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 items-start gap-3 sm:gap-4 xl:gap-4">
+                {suggestions.map((e, i) => (
+                  <button
+                    key={`${e.mediaType}-${e.id}-${shuffleKey}-${i}`}
+                    onClick={() => onOpen(e.mediaType, e.id)}
+                    style={{ animationDelay: `${i * 60}ms` }}
+                    aria-label={`Open ${e.title}`}
+                    className="group animate-rise mx-auto flex w-full max-w-[300px] flex-col text-left"
+                  >
+                    <span className="relative block aspect-[2/3] w-full overflow-hidden border border-border bg-card transition-colors group-hover:border-[var(--primary)] group-focus-visible:border-[var(--primary)]">
+                      {img(e.poster, 'w500') ? (
+                        <img src={img(e.poster, 'w500')!} alt="" loading="lazy" decoding="async" width={300} height={450} className="h-full w-full object-contain transition-opacity duration-300 group-hover:opacity-90" />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center font-display text-4xl text-muted-foreground">
+                          {e.title.slice(0, 1)}
+                        </span>
+                      )}
+                      <span className="absolute left-2 top-2 border border-border bg-background/90 px-1.5 py-1 font-sans text-[9px] tabular-nums text-muted-foreground">
+                        0{i + 1}
+                      </span>
+                    </span>
+                    <span className="mt-3 line-clamp-2 font-sans text-[13px] leading-tight transition-colors group-hover:text-[var(--primary)] sm:text-[15px]">
+                      {e.title}
+                    </span>
+                    <span className="rule-label mt-1.5">
+                      {e.mediaType === 'movie' ? 'Film' : 'Series'} <span className="px-1 text-border">/</span> {e.year || '—'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 flex items-center justify-between border-t border-border pt-3 rule-label">
+                <span>{stats.planned.length} titles on your shelf</span>
+                <span><span className="text-[var(--primary)]">{String(suggestions.length).padStart(2, '0')}</span> selected</span>
+              </div>
+            </>
           )}
         </div>
       </section>
 
-      <Suspense
-        fallback={
-          <section aria-label="Monthly log loading">
-            <SectionHead title="Monthly log" note="Completed titles in each of the trailing twelve months." rule={false} />
-            <div className="w-full border border-border bg-card p-4 shimmer" style={{ height: 232 }} />
-          </section>
-        }
-      >
-        <MonthlyChart entries={entries} />
-      </Suspense>
+      <div id="monthly-log" className="scroll-mt-24">
+        <Suspense
+          fallback={
+            <section aria-label="Monthly log loading">
+              <SectionHead title="Monthly log" note="Completed titles in each of the trailing twelve months." rule={false} />
+              <div className="w-full border border-border bg-card p-4 shimmer" style={{ height: 232 }} />
+            </section>
+          }
+        >
+          <MonthlyChart entries={entries} />
+        </Suspense>
+      </div>
 
       {!hasData && (
         <p className="border-t border-border pt-6 text-[13px] leading-relaxed text-muted-foreground">

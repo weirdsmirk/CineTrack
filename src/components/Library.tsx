@@ -6,15 +6,16 @@ import { useSettings } from '../lib/settings'
 import { Chip, Empty, Poster, PosterGrid, SearchInput, SectionHead, STATUS_INACTIVE, STATUS_STYLE } from './ui'
 
 type Tab = 'all' | 'movie' | 'tv' | 'favorites'
+type ShelfFilter = Status | 'rewatching' | 'rewatched' | 'all'
+export type LibraryView = { tab: Tab; filter: ShelfFilter }
 const TABS: { id: Tab; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'movie', label: 'Movies' },
+  { id: 'movie', label: 'Films' },
   { id: 'tv', label: 'TV' },
   { id: 'favorites', label: 'Favourites' },
 ]
 
-type ShelfFilter = Status | 'rewatching' | 'all'
-const FILTERS: ShelfFilter[] = ['all', 'watching', 'planned', 'watched', 'rewatching', 'dropped']
+const FILTERS: ShelfFilter[] = ['all', 'watching', 'planned', 'watched', 'rewatching', 'rewatched', 'dropped']
 const SORTS = [
   { id: 'added', label: 'Recently added' },
   { id: 'lastWatched', label: 'Last watched' },
@@ -38,6 +39,7 @@ export function applyShelfFilters(
 ): Entry[] {
   let list = pool
   if (opts.status === 'rewatching') list = list.filter((e) => e.mediaType === 'tv' && e.rewatching)
+  else if (opts.status === 'rewatched') list = list.filter((e) => e.rewatches.length > 0)
   else if (opts.status === 'dropped') list = list.filter((e) => e.mediaType === 'tv' && e.status === 'dropped')
   else if (opts.status !== 'all') list = list.filter((e) => e.status === opts.status)
   if (opts.minRating > 0) list = list.filter((e) => (e.rating ?? -1) >= opts.minRating)
@@ -61,16 +63,25 @@ export function applyShelfFilters(
 
 export default function Library({
   onOpen,
+  initialView,
 }: {
   onOpen: (t: MediaType, id: number, seed?: TmdbTitle) => void
+  initialView?: LibraryView | null
 }) {
   const { entries, get } = useLibrary()
   const { settings } = useSettings()
-  const [tab, setTab] = useState<Tab>(settings.defaultShelfTab)
-  const [filter, setFilter] = useState<ShelfFilter>('all')
+  const [tab, setTab] = useState<Tab>(() => initialView?.tab ?? settings.defaultShelfTab)
+  const [filter, setFilter] = useState<ShelfFilter>(() => initialView?.filter ?? 'all')
   const [sort, setSort] = useState<(typeof SORTS)[number]['id']>(settings.defaultSort)
   const [minRating, setMinRating] = useState<(typeof RATING_OPTIONS)[number]['id']>(0)
   const [q, setQ] = useState('')
+
+  useEffect(() => {
+    setTab(initialView?.tab ?? settings.defaultShelfTab)
+    setFilter(initialView?.filter ?? 'all')
+    setMinRating(0)
+    setQ('')
+  }, [initialView, settings.defaultShelfTab])
 
   useEffect(() => {
     if (tab === 'movie' && filter === 'dropped') setFilter('all')
@@ -307,11 +318,18 @@ function FilterBar({
         {FILTERS.filter((f) => showDropped || f !== 'dropped').map((f) => {
           const isActive = filter === f
           const isStatus = f !== 'all'
-          const statusKey = (f === 'rewatching' ? 'watched' : f) as Status
-          const activeStyle = isStatus ? STATUS_STYLE[statusKey] : 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
-          const inactiveStyle = isStatus
-            ? STATUS_INACTIVE[statusKey]
-            : 'border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
+          const isRewatchFilter = f === 'rewatching' || f === 'rewatched'
+          const statusKey = f as Status
+          const activeStyle = isRewatchFilter
+            ? 'bg-[var(--accent)] text-[var(--accent-foreground)] border border-[var(--accent)]'
+            : isStatus
+              ? STATUS_STYLE[statusKey]
+              : 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
+          const inactiveStyle = isRewatchFilter
+            ? 'border border-[var(--accent)]/30 bg-[var(--accent)]/[0.06] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--accent-foreground)] hover:border-[var(--accent)]'
+            : isStatus
+              ? STATUS_INACTIVE[statusKey]
+              : 'border-border text-muted-foreground hover:border-[var(--foreground)] hover:text-foreground'
           return (
             <button
               key={f}

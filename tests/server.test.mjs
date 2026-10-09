@@ -149,6 +149,18 @@ test('local server applies per-record patches and protects private routes', asyn
     assert.equal(library['movie:6'].rewatching, false)
     assert.deepEqual(library['movie:6'].rewatchEpisodes, {})
 
+    const movieRewatch = {
+      ...entry(8, 'Movie with a rewatch'),
+      status: 'watched',
+      watchedAt: 500,
+      runtime: 120,
+      rewatches: [1100],
+    }
+    assert.equal((await post('/__data/library', { clear: false, changes: { 'movie:8': movieRewatch } })).status, 204)
+    library = await (await fetch(`${base}/__data/library`)).json()
+    assert.equal(library['movie:8'].watchedAt, 500)
+    assert.deepEqual(library['movie:8'].rewatches, [1100])
+
     const completedRewatch = {
       ...entry(7, 'Completed rewatch'),
       mediaType: 'tv',
@@ -190,6 +202,8 @@ test('local server applies per-record patches and protects private routes', asyn
     assert.equal(library['tv:7'].watchedAt, 500)
     assert.deepEqual(library['tv:7'].episodes, { '1-1': 400 })
     assert.deepEqual(library['tv:7'].rewatches, [700, 1100])
+    assert.equal(library['movie:8'].watchedAt, 500)
+    assert.deepEqual(library['movie:8'].rewatches, [1100])
     assert.deepEqual(readdirSync(path.join(root, 'data')).sort(), ['database.sqlite'])
   } finally {
     if (child && child.exitCode === null) {

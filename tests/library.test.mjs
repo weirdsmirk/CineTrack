@@ -20,7 +20,7 @@ let advanceRewatch
 let normalizeEntry
 let progress
 let loggedEpisodeCount
-let countShowRewatches
+let countRewatches
 let originalCompletionAt
 let lastActivityAt
 
@@ -37,7 +37,7 @@ before(async () => {
   parseLibraryImport = library.parseLibraryImport
   normalizeEntry = library.normalizeEntry
   countStatuses = library.countStatuses
-  countShowRewatches = library.countShowRewatches
+  countRewatches = library.countRewatches
   originalCompletionAt = library.originalCompletionAt
   lastActivityAt = library.lastActivityAt
   loggedEpisodeCount = library.loggedEpisodeCount
@@ -230,7 +230,7 @@ test('show rewatch progress remains separate and completion adds exactly one rew
   assert.deepEqual(completed.episodes, original.episodes)
   assert.equal(completed.watchedAt, original.watchedAt)
   assert.deepEqual(completed.rewatches, [200, 400])
-  assert.equal(countShowRewatches([completed]), 2)
+  assert.equal(countRewatches([completed]), 2)
   assert.equal(loggedEpisodeCount(completed), 6)
   assert.equal(minutesWatched([completed]), 720)
   assert.equal(recentCompletions([completed]).filter((activity) => activity.label === 'Rewatch').length, 2)
@@ -244,11 +244,39 @@ test('show rewatch progress remains separate and completion adds exactly one rew
   assert.equal(inProgressShow.rewatching, false)
 })
 
-test('Rewatching filter and text search include active shows only', () => {
+test('movie rewatches count once, add runtime, and preserve the original watch date', () => {
+  const originalDate = new Date()
+  originalDate.setDate(15)
+  originalDate.setHours(12, 0, 0, 0)
+  const watchedAt = originalDate.getTime()
+  const rewatchAt = watchedAt + 60_000
+  const movie = entry({
+    id: 14,
+    mediaType: 'movie',
+    status: 'watched',
+    runtime: 120,
+    watchedAt,
+    rewatches: [rewatchAt],
+  })
+
+  assert.equal(movie.watchedAt, watchedAt)
+  assert.equal(countRewatches([movie]), 1)
+  assert.equal(minutesWatched([movie]), 240)
+  assert.equal(lastActivityAt(movie), rewatchAt)
+  assert.deepEqual(
+    recentCompletions([movie]).map(({ at, label }) => ({ at, label })),
+    [{ at: rewatchAt, label: 'Rewatch' }, { at: watchedAt, label: 'Movie' }],
+  )
+  assert.equal(activityByMonth([movie], 1)[0].count, 2)
+})
+
+test('Rewatching filter stays show-only while rewatch history includes completed runs', () => {
   const active = entry({ id: 8, mediaType: 'tv', title: 'Active Series', rewatching: true, rewatchEpisodes: { '1-1': 300 } })
   const movie = entry({ id: 9, title: 'Movie Rewatch', rewatching: true, rewatchEpisodes: { '1-1': 300 } })
   const watched = entry({ id: 10, mediaType: 'tv', title: 'Finished Series' })
-  const pool = [active, movie, watched]
+  const completedMovieRewatch = entry({ id: 11, title: 'Rewatched Film', rewatches: [400] })
+  const completedShowRewatch = entry({ id: 12, mediaType: 'tv', title: 'Rewatched Series', rewatches: [500] })
+  const pool = [active, movie, watched, completedMovieRewatch, completedShowRewatch]
 
   assert.deepEqual(
     applyShelfFilters(pool, { status: 'rewatching', minRating: 0, query: '', sort: 'added' }).map((item) => item.id),
@@ -257,6 +285,10 @@ test('Rewatching filter and text search include active shows only', () => {
   assert.deepEqual(
     applyShelfFilters(pool, { status: 'all', minRating: 0, query: 'rewatching', sort: 'added' }).map((item) => item.id),
     [8],
+  )
+  assert.deepEqual(
+    applyShelfFilters(pool, { status: 'rewatched', minRating: 0, query: '', sort: 'added' }).map((item) => item.id),
+    [11, 12],
   )
 })
 

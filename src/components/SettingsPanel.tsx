@@ -358,7 +358,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               value={settings.defaultShelfTab}
               options={[
                 { id: 'all', label: 'All' },
-                { id: 'movie', label: 'Movies' },
+                { id: 'movie', label: 'Films' },
                 { id: 'tv', label: 'TV' },
                 { id: 'favorites', label: 'Favourites' },
               ]}
@@ -383,7 +383,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
           <Group title="Catalogue" note="Upstream catalogue behaviour.">
             <Toggle
               label="Show adult titles"
-              note="Include adult-rated movies and series in search and discover results."
+              note="Include adult-rated films and series in search and discover results."
               value={settings.includeAdult}
               onChange={(v) => set('includeAdult', v)}
             />
@@ -420,7 +420,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
               <div className="rule-label text-[10px]">Collection Overview</div>
               <div className="grid grid-cols-3 gap-2 border border-border bg-card p-3">
                 <div>
-                  <dt className="rule-label text-[9px]">Movies</dt>
+                  <dt className="rule-label text-[9px]">Films</dt>
                   <dd className="mt-1 font-display text-[26px] leading-none tabular-nums text-foreground">{counts.movie}</dd>
                 </div>
                 <div>

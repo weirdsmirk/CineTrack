@@ -235,16 +235,30 @@ function useTally(value: string | number) {
   return Number.isNaN(target) ? value : shown
 }
 
-export function Stat({ label, value, unit }: { label: string; value: string | number; unit?: string }) {
+export function Stat({
+  label,
+  value,
+  unit,
+  onClick,
+}: {
+  label: string
+  value: string | number
+  unit?: string
+  onClick: () => void
+}) {
   const shown = useTally(value)
   return (
-    <div className="animate-tick border-l border-border pl-5 py-0.5">
+    <button
+      type="button"
+      onClick={onClick}
+      className="animate-tick group w-full cursor-pointer border-l border-border py-0.5 pl-5 text-left transition-colors hover:border-[var(--primary)]"
+    >
       <div className="rule-label text-[11px] tracking-[0.18em]">{label}</div>
       <div className="mt-2.5 flex items-baseline gap-2">
-        <span className="font-display text-[48px] sm:text-[54px] leading-none tracking-tight tabular-nums">{shown}</span>
+        <span className="font-display text-[48px] leading-none tracking-tight tabular-nums transition-colors group-hover:text-[var(--primary)] sm:text-[54px]">{shown}</span>
         {unit && <span className="font-sans text-[13px] text-muted-foreground">{unit}</span>}
       </div>
-    </div>
+    </button>
   )
 }
 
@@ -437,12 +451,14 @@ export const Poster = memo(function Poster({
   entry,
   onOpen,
   style,
+  movieLabel = 'Film',
 }: {
   item: TmdbTitle
   entry?: Entry
   onOpen: (type: MediaType, id: number, seed: TmdbTitle) => void
   /** PosterGrid injects the stagger delay here. */
   style?: CSSProperties
+  movieLabel?: string
 }) {
   const { settings } = useSettings()
   // Posters receive their entry from the shelf parent. Avoid subscribing each
@@ -560,8 +576,8 @@ export const Poster = memo(function Poster({
         className="mt-2 flex w-full items-baseline justify-between gap-2 text-left"
       >
         <span
-          className={`truncate font-display leading-tight transition-colors duration-200 group-hover:text-[var(--primary)] ${
-            compact ? 'text-[15px]' : 'text-[17px]'
+          className={`truncate font-sans leading-tight transition-colors duration-200 group-hover:text-[var(--primary)] ${
+            compact ? 'text-[13px]' : 'text-[15px]'
           }`}
         >
           {titleOf(item)}
@@ -571,7 +587,7 @@ export const Poster = memo(function Poster({
           {community && <span className="text-[var(--accent)]"> · ★ {community}</span>}
         </span>
       </button>
-      <div className="rule-label mt-0.5">{type === 'movie' ? 'Movie' : 'Series'}</div>
+      <div className="rule-label mt-0.5">{type === 'movie' ? movieLabel : 'Series'}</div>
     </div>
   )
 })

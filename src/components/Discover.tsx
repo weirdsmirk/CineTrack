@@ -540,7 +540,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
           next.push({
             key: 'trending-week',
             title: 'Trending this week',
-            note: 'Across movies and series.',
+            note: 'Across films and series.',
             items: trendPicked,
             load: (page, signal) => trending('all', 'week', page, { signal }).then((r) => r.results, () => [] as TmdbTitle[]),
           })
@@ -701,7 +701,7 @@ export default function Discover({ onOpen }: { onOpen: (t: MediaType, id: number
                 setMode(m)
               }}
             >
-              {m === 'movie' ? 'Movies' : m === 'tv' ? 'TV Shows' : m === 'suggested' ? 'For you' : 'Trending'}
+              {m === 'movie' ? 'Films' : m === 'tv' ? 'TV Shows' : m === 'suggested' ? 'For you' : 'Trending'}
             </Chip>
           ))}
         </div>

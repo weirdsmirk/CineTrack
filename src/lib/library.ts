@@ -746,15 +746,18 @@ export function loggedEpisodeCount(e: Entry): number {
   return watchedCount(e) + (e.rewatches.length * (e.totalEpisodes ?? 0)) + Object.keys(e.rewatchEpisodes).length
 }
 
-export function countShowRewatches(entries: Entry[]): number {
-  return entries.reduce((sum, entry) => sum + (entry.mediaType === 'tv' ? entry.rewatches.length : 0), 0)
+export function countRewatches(entries: Entry[]): number {
+  return entries.reduce((sum, entry) => sum + entry.rewatches.length, 0)
 }
 
-/** Approximate minutes watched: movies use runtime, episodes assume 42m when unknown. */
+/** Approximate minutes watched: movies use runtime per viewing; episodes assume 42m when unknown. */
 export function minutesWatched(entries: Entry[]) {
   return entries.reduce((sum, e) => {
     const runtime = typeof e.runtime === 'number' && Number.isFinite(e.runtime) ? Math.max(0, e.runtime) : 0
-    if (e.mediaType === 'movie') return sum + (e.watchedAt != null && validStamp(e.watchedAt) ? (runtime || 110) : 0)
+    if (e.mediaType === 'movie') {
+      const viewings = (validStamp(e.watchedAt) ? 1 : 0) + (e.rewatches ?? []).filter(validStamp).length
+      return sum + viewings * (runtime || 110)
+    }
     return sum + loggedEpisodeCount(e) * (runtime || 42)
   }, 0)
 }
@@ -796,11 +799,10 @@ export function originalCompletionAt(e: Entry): number | null {
   return e.mediaType === 'tv' ? maxTime(Object.values(e.episodes ?? {})) : maxTime(e.rewatches ?? [])
 }
 
-/** Latest viewing timestamp, including a show rewatch in progress. */
+/** Latest viewing timestamp, including completed rewatches and a show rewatch in progress. */
 export function lastActivityAt(e: Entry): number | null {
   if (e.mediaType === 'movie') {
-    if (validStamp(e.watchedAt)) return e.watchedAt
-    return maxTime(e.rewatches ?? [])
+    return maxTime([e.watchedAt, ...(e.rewatches ?? [])])
   }
   return [e.watchedAt, maxTime(Object.values(e.episodes ?? {})), maxTime(e.rewatches ?? []), maxTime(Object.values(e.rewatchEpisodes ?? {}))]
     .filter(validStamp)
@@ -816,7 +818,7 @@ export function recentCompletions(entries: Entry[], limit = 8): Activity[] {
   const events: Activity[] = []
   for (const e of entries) {
     if (e.mediaType === 'movie') {
-      if (validStamp(e.watchedAt)) events.push({ entry: e, at: e.watchedAt, label: 'Movie' })
+      if (validStamp(e.watchedAt)) events.push({ entry: e, at: e.watchedAt, label: 'Film' })
     } else if (e.status === 'watched' || validStamp(e.watchedAt)) {
       const at = validStamp(e.watchedAt) ? e.watchedAt : maxTime(Object.values(e.episodes ?? {}))
       if (at != null) events.push({ entry: e, at, label: 'Series' })
@@ -832,7 +834,7 @@ export function recentActivity(entries: Entry[], limit = 12): Activity[] {
   const events: Activity[] = []
   for (const e of entries) {
     if (e.mediaType === 'movie' && validStamp(e.watchedAt)) {
-      events.push({ entry: e, at: e.watchedAt, label: 'Movie' })
+      events.push({ entry: e, at: e.watchedAt, label: 'Film' })
     } else {
       for (const [k, at] of Object.entries(e.episodes ?? {})) {
         const parts = k.split('-')

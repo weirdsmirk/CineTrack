@@ -51,7 +51,7 @@ export default function MonthlyChart({ entries }: { entries: Entry[] }) {
         {total === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-14 text-center">
             <p className="rule-label">No completions in the last 12 months</p>
-            <p className="text-[12px] text-muted-foreground">Finished movies and series will chart here.</p>
+            <p className="text-[12px] text-muted-foreground">Finished films and series will chart here.</p>
           </div>
         ) : (
           <>

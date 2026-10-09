@@ -5,6 +5,7 @@ import { useSettings } from './lib/settings'
 import { usePersistenceState, type PersistenceState } from './lib/persistence'
 import { Logo, SETTINGS_PANEL_ID, Spinner } from './components/ui'
 import InfoPage, { INFO_LINKS, type InfoSlug } from './components/InfoPages'
+import type { LibraryView } from './components/Library'
 
 const Home = lazy(() => import('./components/Home'))
 const Discover = lazy(() => import('./components/Discover'))
@@ -37,6 +38,7 @@ function routeFromHash(): Page | null {
 
 export default function App() {
   const [page, setPage] = useState<Page>(() => routeFromHash() ?? 'home')
+  const [libraryView, setLibraryView] = useState<LibraryView | null>(null)
   const [info, setInfo] = useState<InfoSlug | null>(null)
   const [open, setOpen] = useState<{ type: MediaType; id: number; seed?: TmdbTitle } | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -71,7 +73,10 @@ export default function App() {
       const next = routeFromHash()
       // An unrecognised fragment routes nowhere: hold the current page and put
       // the URL back rather than leaving it stuck on something meaningless.
-      if (next) setPage(next)
+      if (next) {
+        if (next === 'library') setLibraryView(null)
+        setPage(next)
+      }
       else syncHash(page)
     }
     window.addEventListener('hashchange', onHash)
@@ -107,6 +112,7 @@ export default function App() {
       const target = NAV.find((n) => n.key === digit)
       if (!target) return
       e.preventDefault()
+      if (target.id === 'library') setLibraryView(null)
       goPage(target.id)
     }
     window.addEventListener('keydown', onKey)
@@ -130,7 +136,10 @@ export default function App() {
             {NAV.map((n) => (
               <button
                 key={n.id}
-                onClick={() => goPage(n.id)}
+                onClick={() => {
+                  if (n.id === 'library') setLibraryView(null)
+                  goPage(n.id)
+                }}
                 aria-current={page === n.id && !info ? 'page' : undefined}
                 title={`${n.label} (${navModifier()}${n.key})`}
                 className={`relative flex items-center justify-center gap-1.5 px-3 py-3 font-sans text-[12px] font-medium uppercase tracking-[0.14em] transition-colors duration-200 ${
@@ -200,9 +209,17 @@ export default function App() {
               <InfoPage slug={info} onBack={() => setInfo(null)} />
             ) : (
               <>
-                {page === 'home' && <Home onOpen={openTitle} />}
+                {page === 'home' && (
+                  <Home
+                    onOpen={openTitle}
+                    onLibraryNavigate={(view) => {
+                      setLibraryView(view)
+                      goPage('library')
+                    }}
+                  />
+                )}
                 {page === 'discover' && <Discover onOpen={openTitle} />}
-                {page === 'library' && <Library onOpen={openTitle} />}
+                {page === 'library' && <Library onOpen={openTitle} initialView={libraryView} />}
               </>
             )}
           </div>
