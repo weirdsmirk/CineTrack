@@ -15,6 +15,7 @@ import {
 import {
   epKey,
   fromDateInput,
+  originalCompletionAt,
   toDateInput,
   todayInput,
   useLibrary,
@@ -22,12 +23,12 @@ import {
   type Entry,
   type Status,
 } from '../lib/library'
+import { canSetDropped, statusOptionsFor, statusTransition } from '../lib/status'
 import { useSettings } from '../lib/settings'
 import { CarouselNav, ConfirmDialog, Spinner, STATUS_BADGE, STATUS_INACTIVE, STATUS_STYLE, handleRadioGroupKeyDown, useBodyScrollLock, useFocusTrap, usePosterArt, useTimedTooltip } from './ui'
 import { useToast } from './Toast'
 import CastDetail from './CastDetail'
 
-const STATUSES: Status[] = ['planned', 'watching', 'watched', 'dropped']
 const MAX_AUTO_EPISODES = 20000
 
 function markAllEpisodes(seasons: SeasonSummary[], at: number, seed: Record<string, number> = {}) {
@@ -86,11 +87,19 @@ export default function TitleDetail({
     remove,
     toggleEpisode,
     setSeasonWatched,
+    setRewatching,
     addRewatch,
     setRewatchDate,
     removeRewatch,
   } = useLibrary()
   const entry = get(type, id)
+  const seasonEpisodeTotal = data?.seasons?.reduce(
+    (total, season) => total + (Number.isSafeInteger(season.episode_count) ? Math.max(0, season.episode_count) : 0),
+    0,
+  ) ?? 0
+  const detailTotalEpisodes = type === 'tv'
+    ? data?.number_of_episodes ?? (seasonEpisodeTotal || entry?.totalEpisodes || null)
+    : null
 
   // Slide the drawer in on mount, out on close.
   const [shown, setShown] = useState(false)
@@ -148,10 +157,9 @@ export default function TitleDetail({
   useEffect(() => {
     if (!data || !entry) return
     const runtime = type === 'movie' ? (data.runtime ?? null) : (data.episode_run_time?.[0] ?? null)
-    const totalEpisodes = type === 'tv' ? (data.number_of_episodes ?? null) : null
     const patch: Partial<Entry> = {}
     if (entry.runtime == null && runtime != null) patch.runtime = runtime
-    if (entry.totalEpisodes == null && totalEpisodes != null) patch.totalEpisodes = totalEpisodes
+    if (entry.totalEpisodes == null && detailTotalEpisodes != null) patch.totalEpisodes = detailTotalEpisodes
     if (type === 'tv' && entry.status === 'watched' && watchedCount(entry) === 0 && data.seasons) {
       const at = entry.watchedAt ?? Date.now()
       const episodes = markAllEpisodes(data.seasons, at)
@@ -160,7 +168,7 @@ export default function TitleDetail({
     if (Object.keys(patch).length > 0) {
       upsert(type, id, patch)
     }
-  }, [data, entry, type, id, upsert])
+  }, [data, detailTotalEpisodes, entry, type, id, upsert])
 
   const source = data ?? seed ?? (entry ? ({
     id: entry.id,
@@ -184,7 +192,7 @@ export default function TitleDetail({
 
   const add = (patch: Record<string, unknown> = {}) => {
     const runtime = data ? (type === 'movie' ? (data.runtime ?? null) : (data.episode_run_time?.[0] ?? null)) : null
-    upsert(type, id, { runtime, totalEpisodes: type === 'tv' ? (data?.number_of_episodes ?? null) : null, ...patch }, source ?? undefined)
+    upsert(type, id, { runtime, totalEpisodes: detailTotalEpisodes, ...patch }, source ?? undefined)
   }
 
   const rawRuntime = entry?.runtime ?? (type === 'movie' ? (data?.runtime ?? null) : (data?.episode_run_time?.[0] ?? null))
@@ -196,21 +204,23 @@ export default function TitleDetail({
   /** Single transition table for status changes (picker + confirms). */
   const applyStatus = (s: Status) => {
     if (!entry) return
+    if (s === 'dropped' && !canSetDropped(type, entry.status, watchedCount(entry))) return
     const now = Date.now()
+    const priorCompletion = entry.status === 'watched' ? originalCompletionAt(entry) : entry.watchedAt
+    const transition = statusTransition(entry.status, s, priorCompletion, now)
     let episodesPatch: Record<string, number> | undefined
-    let watchedAt: number | null | undefined
     if (type === 'tv' && s === 'watched' && data?.seasons) {
       episodesPatch = markAllEpisodes(data.seasons, now, entry.episodes)
     }
-    if (s === 'planned' && type === 'tv') {
+    if (transition.clearEpisodes && type === 'tv') {
       // Starting over — clear every logged episode.
       episodesPatch = {}
     }
-    watchedAt = s === 'watched' ? (entry.watchedAt ?? now) : null
     upsert(type, id, {
-      status: s,
-      ...(watchedAt !== undefined ? { watchedAt } : {}),
+      status: transition.status,
+      watchedAt: transition.watchedAt,
       ...(episodesPatch ? { episodes: episodesPatch } : {}),
+      ...(transition.clearEpisodes && type === 'tv' ? { rewatching: false, rewatchEpisodes: {} } : {}),
     })
     toast(`Marked as ${STATUS_BADGE[s]?.label ?? s}`, 'info')
   }
@@ -386,10 +396,18 @@ export default function TitleDetail({
                           title={entry?.title || titleOf(source)}
                           status={entry.status}
                           mediaType={type}
+                          watchedEpisodeCount={watchedCount(entry)}
+                          rewatching={entry.rewatching}
+                          rewatchProgress={Object.keys(entry.rewatchEpisodes).length}
+                          onToggleRewatch={(active) => {
+                            setRewatching(id, active)
+                            toast(active ? 'Rewatch started' : 'Rewatch paused', 'info')
+                          }}
                           container={panelEl}
                           onChange={(s) => {
-                            // Back to Planned wipes the episode log — confirm first.
-                            if (s === 'planned' && type === 'tv' && Object.keys(entry.episodes ?? {}).length > 0) {
+                            const transition = statusTransition(entry.status, s, entry.watchedAt)
+                            // Resetting a logged series is destructive — confirm first.
+                            if (transition.clearEpisodes && type === 'tv' && (Object.keys(entry.episodes ?? {}).length > 0 || Object.keys(entry.rewatchEpisodes ?? {}).length > 0)) {
                               setPendingStatus(s)
                               return
                             }
@@ -545,9 +563,17 @@ export default function TitleDetail({
                     key={id}
                     showId={id}
                     seasons={data.seasons.filter((s) => s.episode_count > 0)}
-                    watched={entry?.episodes ?? {}}
-                    tracked={!!entry}
+                    watched={entry?.rewatching ? entry.rewatchEpisodes : entry?.episodes ?? {}}
+                    rewatchProgress={entry?.rewatchEpisodes ?? {}}
+                    tracked={!!entry && (entry.status !== 'watched' || entry.rewatching)}
+                    completed={entry?.status === 'watched'}
+                    rewatching={!!entry?.rewatching}
+                    totalEpisodes={entry?.totalEpisodes ?? detailTotalEpisodes}
                     onAdd={() => add({ status: 'watching' })}
+                    onToggleRewatch={(active) => {
+                      setRewatching(id, active)
+                      toast(active ? 'Rewatch started' : 'Rewatch paused', 'info')
+                    }}
                     onToggle={(s, e) => toggleEpisode(id, s, e)}
                     onBulk={(s, nums, w) => setSeasonWatched(id, s, nums, w)}
                   />
@@ -576,6 +602,7 @@ export default function TitleDetail({
             title={source ? titleOf(source) : 'Entry'}
             entry={entry}
             container={panelEl}
+            canManuallyLog={!entry.rewatching}
             onClose={() => setRewatchOpen(false)}
             onAddRewatch={(at) => addRewatch(type, id, at)}
             onSetRewatchDate={(i, at) => setRewatchDate(type, id, i, at)}
@@ -598,7 +625,7 @@ export default function TitleDetail({
           message={
             <>
               Setting <strong className="text-foreground">{source ? titleOf(source) : 'this title'}</strong> back
-              to Planned will unmark every logged episode. This cannot be undone.
+              to Planned will clear its original and rewatch episode progress. This cannot be undone.
             </>
           }
           confirmLabel="Clear episodes"
@@ -858,23 +885,30 @@ function StatusModal({
   title,
   status,
   mediaType,
+  watchedEpisodeCount,
+  rewatching,
+  rewatchProgress,
   container,
   onSelect,
+  onToggleRewatch,
   onClose,
 }: {
   title: string
   status: Status
   mediaType: MediaType
+  watchedEpisodeCount: number
+  rewatching: boolean
+  rewatchProgress: number
   container?: HTMLElement | null
   onSelect: (s: Status) => void
+  onToggleRewatch: (active: boolean) => void
   onClose: () => void
 }) {
   const [shown, setShown] = useState(false)
   const boxRef = useRef<HTMLDivElement | null>(null)
   useFocusTrap(boxRef)
   const closeTimer = useRef<number | null>(null)
-  // Watching is a series-only state — movies are planned, watched, or dropped.
-  const options = mediaType === 'movie' ? STATUSES.filter((s) => s !== 'watching') : STATUSES
+  const options = statusOptionsFor(mediaType, status, watchedEpisodeCount)
   // Stable identity: onClose is an inline prop that changes every parent
   // render — depending on it would re-run the mount effect on every commit,
   // whose cleanup kills the dismiss timer (modal never closes on Save).
@@ -985,6 +1019,32 @@ setShown(false)
               </button>
             )
           })}
+          {mediaType === 'tv' && status === 'watched' && (
+            <button
+              type="button"
+              aria-label={`Rewatching: ${rewatching ? 'pause' : rewatchProgress ? 'resume' : 'start'} rewatch`}
+              aria-pressed={rewatching}
+              onClick={() => {
+                onToggleRewatch(!rewatching)
+                close()
+              }}
+              className={`press flex h-9 w-full items-center justify-between border px-3 text-left font-sans text-[11px] font-medium uppercase tracking-[0.14em] transition-all ${
+                rewatching
+                  ? 'border-[var(--primary)] bg-[var(--primary)]/[0.08] text-[var(--primary)] shadow-xs'
+                  : 'border-border text-muted-foreground hover:border-[var(--primary)] hover:text-[var(--primary)]'
+              }`}
+            >
+              <span className="flex items-center gap-2.5">
+                <RewatchIcon />
+                Rewatching
+              </span>
+              {rewatching && (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -998,14 +1058,22 @@ function StatusButtons({
   title,
   status,
   mediaType,
+  watchedEpisodeCount,
+  rewatching,
+  rewatchProgress,
   container,
   onChange,
+  onToggleRewatch,
 }: {
   title: string
   status: Status
   mediaType: MediaType
+  watchedEpisodeCount: number
+  rewatching: boolean
+  rewatchProgress: number
   container?: HTMLElement | null
   onChange: (s: Status) => void
+  onToggleRewatch: (active: boolean) => void
 }) {
   const [modalOpen, setModalOpen] = useState(false)
   const badge = STATUS_BADGE[status] ?? STATUS_BADGE.planned
@@ -1030,7 +1098,7 @@ function StatusButtons({
           }}
           aria-haspopup="dialog"
           aria-expanded={modalOpen}
-          aria-label={`Status: ${badge?.label ?? status}. Activate to change status`}
+          aria-label={`Status: ${badge?.label ?? status}${rewatching ? ', rewatching' : ''}. Activate to change status`}
           className={`press flex h-8 w-[108px] shrink-0 items-center justify-center px-3 font-sans text-[11px] font-medium uppercase tracking-[0.14em] shadow-xs transition-opacity hover:opacity-90 ${badgeStyle}`}
         >
           <span>{badge?.label ?? status}</span>
@@ -1039,13 +1107,18 @@ function StatusButtons({
           Click to change status
         </span>
       </div>
+      {rewatching && <span className="rule-label flex items-center gap-1 text-[9px] text-[var(--primary)]"><RewatchIcon /> Rewatching</span>}
 
       {modalOpen && (
         <StatusModal
           title={title}
           status={status}
           mediaType={mediaType}
+          watchedEpisodeCount={watchedEpisodeCount}
+          rewatching={rewatching}
+          rewatchProgress={rewatchProgress}
           container={container}
+          onToggleRewatch={onToggleRewatch}
           onSelect={(s) => {
             onChange(s)
           }}
@@ -1079,8 +1152,9 @@ function EditModal({
 }) {
   const [shown, setShown] = useState(false)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [confirmResetProgress, setConfirmResetProgress] = useState(false)
   const boxRef = useRef<HTMLFormElement | null>(null)
-  useFocusTrap(boxRef)
+  useFocusTrap(boxRef, !confirmDiscard && !confirmResetProgress)
   const closeTimer = useRef<number | null>(null)
   const { toast } = useToast()
   const prefillToday = useSettings().settings.defaultWatchDate === 'today'
@@ -1093,6 +1167,8 @@ function EditModal({
   const [draftFavorite, setDraftFavorite] = useState(entry.favorite)
   const [draftWatchedAt, setDraftWatchedAt] = useState(entry.watchedAt)
   const [draftStatus, setDraftStatus] = useState(entry.status)
+  const [draftRewatching, setDraftRewatching] = useState(entry.rewatching)
+  const statusOptions = statusOptionsFor(type, entry.status, watchedCount(entry))
   const [customTitle, setCustomTitle] = useState(entry.title ?? '')
   const [customYear, setCustomYear] = useState(entry.year ?? '')
   const [customRuntime, setCustomRuntime] = useState(entry.runtime != null ? String(entry.runtime) : '')
@@ -1111,6 +1187,7 @@ function EditModal({
     draftFavorite !== entry.favorite ||
     draftWatchedAt !== entry.watchedAt ||
     draftStatus !== entry.status ||
+    draftRewatching !== entry.rewatching ||
     customTitle.trim() !== (entry.title ?? '') ||
     customYear.trim() !== (entry.year ?? '') ||
     (type === 'movie'
@@ -1127,7 +1204,7 @@ function EditModal({
     else dismiss()
   }, [dismiss])
 
-  const save = useCallback(() => {
+  const save = useCallback((confirmedReset = false) => {
     if (draftStatus === 'watched' && draftWatchedAt == null) {
       toast('Add a watch date before saving a watched title', 'error')
       return
@@ -1135,8 +1212,25 @@ function EditModal({
     const patch: Partial<Entry> = {}
     if (draftRating !== entry.rating) patch.rating = draftRating
     if (draftFavorite !== entry.favorite) patch.favorite = draftFavorite
-    if (draftWatchedAt !== entry.watchedAt) patch.watchedAt = draftWatchedAt
-    if (draftStatus !== entry.status) patch.status = draftStatus
+    const priorCompletion = draftWatchedAt !== entry.watchedAt
+      ? draftWatchedAt
+      : entry.status === 'watched'
+        ? originalCompletionAt(entry)
+        : draftWatchedAt
+    const transition = statusTransition(entry.status, draftStatus, priorCompletion)
+    if (!confirmedReset && type === 'tv' && transition.clearEpisodes && (watchedCount(entry) > 0 || Object.keys(entry.rewatchEpisodes).length > 0)) {
+      setConfirmResetProgress(true)
+      return
+    }
+    if (draftStatus !== entry.status) {
+      patch.status = transition.status
+      if (transition.watchedAt !== entry.watchedAt) patch.watchedAt = transition.watchedAt
+    } else if (draftWatchedAt !== entry.watchedAt) {
+      patch.watchedAt = draftWatchedAt
+    }
+    if (type === 'tv' && (draftRewatching !== entry.rewatching || draftStatus !== entry.status)) {
+      patch.rewatching = entry.status === 'watched' && draftStatus === 'watched' && draftRewatching
+    }
     const t = customTitle.trim()
     if (t && t !== entry.title) patch.title = t
     if (customYear.trim() !== entry.year) patch.year = customYear.trim()
@@ -1154,14 +1248,16 @@ function EditModal({
     const n = customNote.trim()
     if (n !== (entry.note ?? '')) patch.note = n || undefined
     // Mirror the status picker's episode side-effects for shows: marking
-    // watched fills every real season (Specials left alone), while planned
-    // clears the log to start over.
-    if (type === 'tv' && seasons && draftStatus !== entry.status) {
-      if (draftStatus === 'watched') {
+    // watched fills every real season, while moving to Planned clears progress
+    // except when resuming from Dropped, which preserves the viewing history.
+    if (type === 'tv' && draftStatus !== entry.status) {
+      if (draftStatus === 'watched' && seasons) {
         const at = draftWatchedAt ?? Date.now()
         patch.episodes = markAllEpisodes(seasons, at, entry.episodes)
-      } else if (draftStatus === 'planned') {
+      } else if (transition.clearEpisodes) {
         patch.episodes = {}
+        patch.rewatching = false
+        patch.rewatchEpisodes = {}
       }
     }
 
@@ -1176,6 +1272,7 @@ function EditModal({
     draftFavorite,
     draftWatchedAt,
     draftStatus,
+    draftRewatching,
     customTitle,
     customYear,
     customRuntime,
@@ -1314,6 +1411,58 @@ function EditModal({
             </div>
           </Field>
 
+          <Field label="Status">
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Title status" onKeyDown={handleRadioGroupKeyDown}>
+              {statusOptions.map((status) => {
+                const active = draftStatus === status
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    tabIndex={active ? 0 : -1}
+                    onClick={() => {
+                      setDraftStatus(status)
+                      if (status !== 'watched') setDraftRewatching(false)
+                    }}
+                    className={`press flex h-8 min-w-[92px] flex-1 items-center justify-center gap-2 border px-2 font-sans text-[10px] font-medium uppercase tracking-[0.12em] ${
+                      active ? STATUS_STYLE[status] : STATUS_INACTIVE[status]
+                    }`}
+                  >
+                    <span className="flex h-3.5 w-3.5 items-center justify-center">{STATUS_BADGE[status].icon}</span>
+                    {STATUS_BADGE[status].label}
+                  </button>
+                )
+              })}
+            </div>
+          </Field>
+
+          {type === 'tv' && entry.status === 'watched' && draftStatus === 'watched' && (
+            <Field label="Rewatching">
+              <button
+                type="button"
+                aria-pressed={draftRewatching}
+                onClick={() => setDraftRewatching((active) => !active)}
+                className={`press flex w-full items-center justify-between border px-3 py-2 text-left ${
+                  draftRewatching
+                    ? 'border-[var(--primary)] bg-[var(--primary)]/[0.08] text-[var(--primary)]'
+                    : 'border-border hover:border-[var(--primary)]'
+                }`}
+              >
+                <span>
+                  <span className="block font-sans text-[10px] font-medium uppercase tracking-[0.12em]">
+                    {draftRewatching ? 'Pause rewatch' : Object.keys(entry.rewatchEpisodes).length ? 'Resume rewatch' : 'Start rewatch'}
+                  </span>
+                  <span className="mt-0.5 block font-sans text-[11px] text-muted-foreground">
+                    {Object.keys(entry.rewatchEpisodes).length} of {entry.totalEpisodes ?? '?'} episodes saved separately
+                  </span>
+                </span>
+                <RewatchIcon />
+              </button>
+            </Field>
+          )}
+
           <div className="space-y-3">
             <Field label="Favourite">
               <button
@@ -1338,7 +1487,7 @@ function EditModal({
                   onClick={() => {
                     if (draftWatchedAt != null || draftStatus === 'watched') {
                       setDraftWatchedAt(null)
-                      setDraftStatus('planned')
+                      if (draftStatus !== 'dropped') setDraftStatus('planned')
                     } else {
                       setDraftWatchedAt(prefillToday ? Date.now() : null)
                       setDraftStatus('watched')
@@ -1487,6 +1636,19 @@ className="h-8 w-full border border-border bg-background px-2.5 font-sans text-[
       </form>
 
       <ConfirmDialog
+        open={confirmResetProgress}
+        container={container}
+        title="Start Over"
+        message={<>Setting <strong className="text-foreground">{customTitle || title}</strong> to Planned will clear original and rewatch episode progress. This cannot be undone.</>}
+        confirmLabel="Clear episodes"
+        onCancel={() => setConfirmResetProgress(false)}
+        onConfirm={() => {
+          setConfirmResetProgress(false)
+          save(true)
+        }}
+      />
+
+      <ConfirmDialog
         open={confirmDiscard}
         container={container}
         title="Discard Changes"
@@ -1510,6 +1672,7 @@ function RewatchModal({
   title,
   entry,
   container,
+  canManuallyLog,
   onClose,
   onAddRewatch,
   onSetRewatchDate,
@@ -1518,6 +1681,7 @@ function RewatchModal({
   title: string
   entry: Entry
   container?: HTMLElement | null
+  canManuallyLog: boolean
   onClose: () => void
   onAddRewatch: (at: number) => void
   onSetRewatchDate: (index: number, at: number) => void
@@ -1641,24 +1805,30 @@ function RewatchModal({
         </div>
 
         <footer className="flex shrink-0 items-center gap-2 border-t border-border px-4.5 py-3">
-          <input
-            type="date"
-            max={todayInput()}
-            value={rewatchDate}
-            onChange={(e) => e.target.value && setRewatchDate(e.target.value)}
-            className="h-8 flex-1 border border-border bg-background px-2 font-sans text-[11px] outline-none focus:border-[var(--primary)]"
-          />
-          <button
-            onClick={() => {
-              const at = fromDateInput(rewatchDate)
-              if (at == null) return
-              onAddRewatch(at)
-              toast('Rewatch logged', 'success')
-            }}
-            className="press h-8 bg-[var(--primary)] px-4 font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-primary-foreground hover:opacity-85"
-          >
-            + Log rewatch
-          </button>
+          {canManuallyLog ? (
+            <>
+              <input
+                type="date"
+                max={todayInput()}
+                value={rewatchDate}
+                onChange={(e) => e.target.value && setRewatchDate(e.target.value)}
+                className="h-8 flex-1 border border-border bg-background px-2 font-sans text-[11px] outline-none focus:border-[var(--primary)]"
+              />
+              <button
+                onClick={() => {
+                  const at = fromDateInput(rewatchDate)
+                  if (at == null) return
+                  onAddRewatch(at)
+                  toast('Rewatch logged', 'success')
+                }}
+                className="press h-8 bg-[var(--primary)] px-4 font-sans text-[10px] font-medium uppercase tracking-[0.14em] text-primary-foreground hover:opacity-85"
+              >
+                + Log rewatch
+              </button>
+            </>
+          ) : (
+            <p className="rule-label text-[10px]">Finish the episode list to log this rewatch.</p>
+          )}
         </footer>
 
         <ConfirmDialog
@@ -1696,16 +1866,26 @@ function Seasons({
   showId,
   seasons,
   watched,
+  rewatchProgress,
   tracked,
+  completed,
+  rewatching,
+  totalEpisodes,
   onAdd,
+  onToggleRewatch,
   onToggle,
   onBulk,
 }: {
   showId: number
   seasons: { id: number; season_number: number; name: string; episode_count: number; air_date: string | null }[]
   watched: Record<string, number>
+  rewatchProgress: Record<string, number>
   tracked: boolean
+  completed: boolean
+  rewatching: boolean
+  totalEpisodes: number | null
   onAdd: () => void
+  onToggleRewatch: (active: boolean) => void
   onToggle: (s: number, e: number) => void
   onBulk: (s: number, nums: number[], watched: boolean) => void
 }) {
@@ -1765,7 +1945,36 @@ function Seasons({
 
   return (
     <div>
-      {!tracked && (
+      {completed && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border border-border bg-card px-3.5 py-3">
+          <div>
+            <p className="rule-label text-[10px] text-[var(--primary)]">
+              {rewatching ? 'Rewatching' : Object.keys(rewatchProgress).length ? 'Rewatch paused' : 'Completed'}
+            </p>
+            <p className="mt-1 text-[12px] text-muted-foreground">
+              {rewatching
+                ? `${Object.keys(watched).length} of ${totalEpisodes ?? entryTotal(seasons)} episodes · original completion stays intact`
+                : Object.keys(rewatchProgress).length
+                  ? `${Object.keys(rewatchProgress).length} rewatch episodes saved separately`
+                  : 'Start a separate episode run; finishing it adds one rewatch.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onToggleRewatch(!rewatching)}
+            aria-pressed={rewatching}
+            className={`press border px-3 py-2 font-sans text-[10px] font-medium uppercase tracking-[0.12em] ${
+              rewatching
+                ? 'border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-primary-foreground'
+                : 'border-border hover:border-[var(--primary)] hover:text-[var(--primary)]'
+            }`}
+          >
+            {rewatching ? 'Pause rewatch' : Object.keys(rewatchProgress).length ? 'Resume rewatch' : 'Start rewatch'}
+          </button>
+        </div>
+      )}
+
+      {!tracked && !completed && (
         <div className="mb-4">
           <button
             onClick={onAdd}
@@ -1836,6 +2045,7 @@ function Seasons({
                 {tracked && (
                   <button
                     disabled={loading && !eps}
+                    title={completed && !rewatching ? 'Start a rewatch to track new episode progress' : undefined}
                     onClick={() => {
                       const numbers =
                         eps?.map((e) => e.episode_number) ??
@@ -1866,8 +2076,8 @@ function Seasons({
                     {confirmClear === s.season_number
                       ? 'Click again to unmark'
                       : seen >= s.episode_count
-                        ? '✓ Season watched'
-                        : 'Mark season watched'}
+                        ? rewatching ? '✓ Season rewatched' : '✓ Season watched'
+                        : rewatching ? 'Mark season rewatched' : 'Mark season watched'}
                   </button>
                 )}
               </div>
@@ -1899,6 +2109,7 @@ function Seasons({
                     >
                       <button
                         disabled={!tracked}
+                        title={completed && !rewatching ? 'Start a rewatch to track new episode progress' : undefined}
                         aria-pressed={done}
                         onClick={() => onToggle(s.season_number, e.episode_number)}
                         className={`flex min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left transition-colors ${
@@ -1957,7 +2168,13 @@ function Seasons({
           )
         })}
       </div>
-      <p className="rule-label mt-3">{Object.keys(watched).length} episodes logged across this series</p>
+      <p className="rule-label mt-3">
+        {Object.keys(watched).length} episodes logged {rewatching ? 'in this rewatch' : 'across this series'}
+      </p>
     </div>
   )
+}
+
+function entryTotal(seasons: { episode_count: number }[]) {
+  return seasons.reduce((total, season) => total + season.episode_count, 0)
 }

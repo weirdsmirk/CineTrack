@@ -3,8 +3,8 @@ import type { MediaType, TmdbTitle } from './tmdb'
 import { isSafeImagePath, titleOf, yearOf } from './tmdb'
 import { currentSettings } from './settings'
 import { setPersistenceState } from './persistence'
-
-export type Status = 'watching' | 'planned' | 'watched' | 'dropped'
+import { advanceRewatch, canSetDropped, MAX_REWATCHES, STATUS_IDS, watchedAtAfterProgress, type Status } from './status'
+export type { Status } from './status'
 
 export type Entry = {
   id: number
@@ -25,15 +25,15 @@ export type Entry = {
   totalEpisodes: number | null
   /** Timestamps of additional complete watch-throughs, beyond the first. */
   rewatches: number[]
+  /** A TV rewatch is tracked separately from the original completed run. */
+  rewatching: boolean
+  rewatchEpisodes: Record<string, number>
   /** Retired: free-text notes were removed from the UI. Kept for back-compat. */
   note?: string
 }
 
 const LEGACY_STORAGE = 'archive.library.v1'
 const LEGACY_CORRUPT_STORAGE = 'archive.library.v1.corrupt'
-/** Server truncates rewatches at 500 — mirror that client-side. */
-const MAX_REWATCHES = 500
-
 export const epKey = (s: number, e: number) => `${s}-${e}`
 export const entryKey = (type: MediaType, id: number) => `${type}:${id}`
 
@@ -56,8 +56,6 @@ export function isSafeKey(key: unknown): key is string {
   return !!match && Number.isSafeInteger(Number(match[2])) && Number(match[2]) > 0
 }
 
-const STATUSES: Status[] = ['planned', 'watching', 'watched', 'dropped']
-
 function finiteOrNull(n: unknown): number | null {
   return typeof n === 'number' && Number.isFinite(n) ? n : null
 }
@@ -73,8 +71,11 @@ export function isValidTimestamp(value: unknown): value is number {
  */
 export function normalizeEntry(entry: Entry): Entry {
   if ((entry.status as string) === 'completed') entry.status = 'watched'
-  if (!STATUSES.includes(entry.status)) entry.status = 'planned'
+  if (!STATUS_IDS.includes(entry.status)) entry.status = 'planned'
   if (entry.mediaType !== 'movie' && entry.mediaType !== 'tv') entry.mediaType = 'movie'
+  // Movies have no Dropped state. Keep every other field and move legacy
+  // movie records to Planned so their existing data remains intact.
+  if (entry.mediaType === 'movie' && entry.status === 'dropped') entry.status = 'planned'
   if (!Number.isSafeInteger(entry.id) || (entry.id as number) <= 0) entry.id = 0
   if (typeof entry.title !== 'string' || !entry.title) entry.title = 'Untitled'
   else entry.title = entry.title.slice(0, MAX_TITLE_LEN)
@@ -104,8 +105,22 @@ export function normalizeEntry(entry: Entry): Entry {
       for (const k of Object.keys(entry.episodes)) if (!keep.has(k)) delete entry.episodes[k]
     }
   }
+  if (!entry.rewatchEpisodes || typeof entry.rewatchEpisodes !== 'object' || Array.isArray(entry.rewatchEpisodes)) {
+    entry.rewatchEpisodes = {}
+  } else {
+    for (const [k, v] of Object.entries(entry.rewatchEpisodes)) {
+      if (!/^\d+-\d+$/.test(k) || !isValidTimestamp(v)) delete entry.rewatchEpisodes[k]
+    }
+    const keys = Object.keys(entry.rewatchEpisodes)
+    if (keys.length > MAX_EPISODE_KEYS) {
+      const keep = new Set(keys.slice(-MAX_EPISODE_KEYS))
+      for (const k of keys) if (!keep.has(k)) delete entry.rewatchEpisodes[k]
+    }
+  }
   if (!Array.isArray(entry.rewatches)) entry.rewatches = []
   else entry.rewatches = entry.rewatches.filter(isValidTimestamp).slice(-MAX_REWATCHES)
+  entry.rewatching = entry.mediaType === 'tv' && entry.status === 'watched' && entry.rewatching === true
+  if (entry.mediaType !== 'tv') entry.rewatchEpisodes = {}
   if (typeof entry.note === 'string' && entry.note.length > MAX_NOTE_LEN) entry.note = entry.note.slice(0, MAX_NOTE_LEN)
   else if (entry.note != null && typeof entry.note !== 'string') entry.note = undefined
   return entry
@@ -295,6 +310,7 @@ export function isLibraryHydrated(): boolean {
  */
 async function hydrateFromSqlite() {
   let databaseSnapshot: Record<string, Entry> | null = null
+  let rawDatabaseSnapshot: unknown = null
   try {
     if (typeof fetch !== 'function') return
     const controller = new AbortController()
@@ -304,7 +320,8 @@ async function hydrateFromSqlite() {
     if (!res?.ok) return
     const ct = res.headers.get('content-type') || ''
     if (!ct.includes('application/json')) return
-    databaseSnapshot = sanitizeMap(await res.json())
+    rawDatabaseSnapshot = await res.json()
+    databaseSnapshot = sanitizeMap(rawDatabaseSnapshot)
   } catch {
     // Keep the legacy data in memory and in place until the database is reachable.
   } finally {
@@ -322,6 +339,21 @@ async function hydrateFromSqlite() {
         else delete merged[key]
       }
       const changes = diffEntries(databaseSnapshot, merged)
+      // sanitizeMap normalizes the in-memory copy, so explicitly persist this
+      // one-time status correction for legacy movie rows in SQLite as well.
+      if (rawDatabaseSnapshot && typeof rawDatabaseSnapshot === 'object' && !Array.isArray(rawDatabaseSnapshot)) {
+        for (const [key, value] of Object.entries(rawDatabaseSnapshot)) {
+          if (!isSafeKey(key) || !value || typeof value !== 'object' || Array.isArray(value)) continue
+          const rawEntry = value as Partial<Entry>
+          if (
+            rawEntry.mediaType === 'movie' &&
+            rawEntry.status === 'dropped' &&
+            databaseSnapshot[key] &&
+            !clearedDuringHydration &&
+            !changedDuringHydration.has(key)
+          ) changes[key] = merged[key] ?? databaseSnapshot[key]
+        }
+      }
       const databaseChanged = Object.keys(changes).length > 0
       cache = merged
       snapshot = Object.values(merged)
@@ -385,6 +417,7 @@ export function useLibrary(subscribeToStore = true) {
     if ((type !== 'movie' && type !== 'tv') || !Number.isSafeInteger(id) || id <= 0) return
     const key = entryKey(type, id)
     const existing = cache[key]
+    if (patch.status === 'dropped' && !canSetDropped(type, existing?.status ?? 'planned', Object.keys(existing?.episodes ?? {}).length)) return
     const base: Entry = existing ?? {
       id,
       mediaType: type,
@@ -401,6 +434,8 @@ export function useLibrary(subscribeToStore = true) {
       episodes: {},
       totalEpisodes: null,
       rewatches: [],
+      rewatching: false,
+      rewatchEpisodes: {},
     }
     const updated = normalizeEntry({ ...base, ...patch })
     commit({ ...cache, [key]: updated }, { [key]: updated })
@@ -413,40 +448,29 @@ export function useLibrary(subscribeToStore = true) {
     commit(next, { [entryKey(type, id)]: null })
   }, [])
 
-  /**
-   * Completion stamp for a series, so finishing it by checking the last episode
-   * records a date the way the status picker always has. The latest episode
-   * timestamp is the real finishing day, so a backfilled log dates correctly;
-   * a hand-entered date on an already-watched show is left alone. Only a
-   * complete show carries a date — unchecking an episode clears it again.
-   */
-  function completionStamp(
-    episodes: Record<string, number>,
-    finished: boolean,
-    previous: number | null,
-    wasWatched: boolean,
-  ): number | null {
-    if (!finished) return null
-    if (wasWatched && previous != null) return previous
-    return maxTime(Object.values(episodes)) ?? Date.now()
-  }
-
   /** `at` backdates the log; defaults to now. Ignores non-integer season/episodes. */
   const toggleEpisode = useCallback((id: number, s: number, e: number, at?: number) => {
     if (!Number.isInteger(id) || !Number.isInteger(s) || !Number.isInteger(e) || s < 0 || e < 0) return
     const key = entryKey('tv', id)
     const entry = cache[key]
     if (!entry) return
+    if (entry.status === 'watched' && !entry.rewatching) return
     const k = epKey(s, e)
     const stamp = isValidTimestamp(at) ? at : Date.now()
-    const episodes = { ...entry.episodes }
+    const episodes = { ...(entry.rewatching ? entry.rewatchEpisodes : entry.episodes) }
     if (Object.prototype.hasOwnProperty.call(episodes, k)) delete episodes[k]
     else episodes[k] = Number.isFinite(stamp) ? stamp : Date.now()
+    if (entry.rewatching) {
+      const cycle = advanceRewatch(entry, episodes, entry.totalEpisodes)
+      const updated = { ...entry, ...cycle }
+      commit({ ...cache, [key]: updated }, { [key]: updated })
+      return
+    }
     const watched = Object.keys(episodes).length
     const finished = currentSettings().autoCompleteSeries && !!entry.totalEpisodes && watched >= entry.totalEpisodes
     // An empty log is never "watched" — fall back to planned (dropped stays dropped).
     const status: Status = finished ? 'watched' : watched > 0 ? 'watching' : entry.status === 'dropped' ? 'dropped' : 'planned'
-    const watchedAt = completionStamp(episodes, finished, entry.watchedAt, entry.status === 'watched')
+    const watchedAt = watchedAtAfterProgress(entry.status, finished, entry.watchedAt, maxTime(Object.values(episodes)))
     const updated = { ...entry, episodes, status, watchedAt }
     commit({ ...cache, [key]: updated }, { [key]: updated })
   }, [])
@@ -457,28 +481,43 @@ export function useLibrary(subscribeToStore = true) {
     const key = entryKey('tv', id)
     const entry = cache[key]
     if (!entry) return
-    const episodes = { ...entry.episodes }
+    if (entry.status === 'watched' && !entry.rewatching) return
+    const episodes = { ...(entry.rewatching ? entry.rewatchEpisodes : entry.episodes) }
     for (const n of numbers) {
       if (!Number.isInteger(n) || n < 0) continue
       if (watched) episodes[epKey(s, n)] = episodes[epKey(s, n)] ?? (isValidTimestamp(at) ? at : Date.now())
       else delete episodes[epKey(s, n)]
     }
+    if (entry.rewatching) {
+      const cycle = advanceRewatch(entry, episodes, entry.totalEpisodes)
+      const updated = { ...entry, ...cycle }
+      commit({ ...cache, [key]: updated }, { [key]: updated })
+      return
+    }
     const count = Object.keys(episodes).length
     const finished = currentSettings().autoCompleteSeries && !!entry.totalEpisodes && count >= entry.totalEpisodes
     const status: Status =
       finished ? 'watched' : count > 0 ? 'watching' : entry.status === 'dropped' ? 'dropped' : 'planned'
-    const watchedAt = completionStamp(episodes, finished, entry.watchedAt, entry.status === 'watched')
+    const watchedAt = watchedAtAfterProgress(entry.status, finished, entry.watchedAt, maxTime(Object.values(episodes)))
     const updated = { ...entry, episodes, status, watchedAt }
     commit({ ...cache, [key]: updated }, { [key]: updated })
     },
     [],
   )
 
+  const setRewatching = useCallback((id: number, rewatching: boolean) => {
+    const key = entryKey('tv', id)
+    const entry = cache[key]
+    if (!entry || entry.mediaType !== 'tv' || entry.status !== 'watched') return
+    const updated = normalizeEntry({ ...entry, rewatching })
+    commit({ ...cache, [key]: updated }, { [key]: updated })
+  }, [])
+
   /** Log an additional watch-through at `at` (defaults to now). Capped at MAX_REWATCHES. */
   const addRewatch = useCallback((type: MediaType, id: number, at?: number) => {
     const key = entryKey(type, id)
     const entry = cache[key]
-    if (!entry) return
+    if (!entry || (type === 'tv' && entry.rewatching)) return
     const stamp = at ?? Date.now()
     if (!isValidTimestamp(stamp)) return
     const rewatches = [...(entry.rewatches ?? []), stamp].sort((a, b) => a - b).slice(-MAX_REWATCHES)
@@ -520,6 +559,7 @@ export function useLibrary(subscribeToStore = true) {
     remove,
     toggleEpisode,
     setSeasonWatched,
+    setRewatching,
     addRewatch,
     setRewatchDate,
     removeRewatch,
@@ -538,6 +578,8 @@ function mergeMigratedEntry(legacy: Entry, database: Entry): Entry {
     ...database,
     ...legacy,
     episodes: { ...database.episodes, ...legacy.episodes },
+    rewatchEpisodes: { ...database.rewatchEpisodes, ...legacy.rewatchEpisodes },
+    rewatching: legacy.rewatching || database.rewatching,
     rewatches,
     rating: legacy.rating ?? database.rating,
     favorite: legacy.favorite || database.favorite,
@@ -564,6 +606,8 @@ function mergeImportedEntry(existing: Entry, incoming: Entry): Entry {
     ...incoming,
     ...existing,
     episodes: { ...incoming.episodes, ...existing.episodes },
+    rewatchEpisodes: { ...incoming.rewatchEpisodes, ...existing.rewatchEpisodes },
+    rewatching: existing.rewatching || incoming.rewatching,
     rewatches,
     rating: existing.rating ?? incoming.rating,
     favorite: existing.favorite || incoming.favorite,
@@ -653,6 +697,15 @@ export const todayInput = () => toDateInput(Date.now())
 
 /* ---------- derived metrics ---------- */
 
+export function countStatuses(entries: Entry[]): Record<Status, number> {
+  const counts: Record<Status, number> = { planned: 0, watching: 0, watched: 0, dropped: 0 }
+  for (const entry of entries) {
+    const status = entry.status === 'dropped' && entry.mediaType !== 'tv' ? 'planned' : entry.status
+    counts[status]++
+  }
+  return counts
+}
+
 export const watchedCount = (e: Entry) => Object.keys(e.episodes ?? {}).length
 
 /** Latest timestamp in a list without spread (avoids stack overflow on huge maps). */
@@ -665,12 +718,6 @@ function maxTime(times: readonly unknown[]): number | null {
   return max
 }
 
-function latestTime(a: number | null, b: number | null): number | null {
-  if (a == null) return b
-  if (b == null) return a
-  return Math.max(a, b)
-}
-
 function validStamp(at: unknown): at is number {
   return isValidTimestamp(at)
 }
@@ -678,7 +725,18 @@ function validStamp(at: unknown): at is number {
 export function progress(e: Entry) {
   if (e.mediaType === 'movie') return e.watchedAt != null && validStamp(e.watchedAt) ? 1 : 0
   if (!e.totalEpisodes || e.totalEpisodes <= 0) return 0
-  return Math.min(1, Math.max(0, watchedCount(e) / e.totalEpisodes))
+  const seen = e.rewatching ? Object.keys(e.rewatchEpisodes).length : watchedCount(e)
+  return Math.min(1, Math.max(0, seen / e.totalEpisodes))
+}
+
+/** Episodes from the original run, finished rewatches, and a partial rewatch. */
+export function loggedEpisodeCount(e: Entry): number {
+  if (e.mediaType !== 'tv') return 0
+  return watchedCount(e) + (e.rewatches.length * (e.totalEpisodes ?? 0)) + Object.keys(e.rewatchEpisodes).length
+}
+
+export function countShowRewatches(entries: Entry[]): number {
+  return entries.reduce((sum, entry) => sum + (entry.mediaType === 'tv' ? entry.rewatches.length : 0), 0)
 }
 
 /** Approximate minutes watched: movies use runtime, episodes assume 42m when unknown. */
@@ -686,7 +744,7 @@ export function minutesWatched(entries: Entry[]) {
   return entries.reduce((sum, e) => {
     const runtime = typeof e.runtime === 'number' && Number.isFinite(e.runtime) ? Math.max(0, e.runtime) : 0
     if (e.mediaType === 'movie') return sum + (e.watchedAt != null && validStamp(e.watchedAt) ? (runtime || 110) : 0)
-    return sum + watchedCount(e) * (runtime || 42)
+    return sum + loggedEpisodeCount(e) * (runtime || 42)
   }, 0)
 }
 
@@ -721,11 +779,21 @@ export function formatRelativeDay(at: number, now = Date.now()) {
   return formatDayMonth(at)
 }
 
-/** Latest viewing timestamp: your recorded watch date wins when present,
- *  otherwise the latest logged episode or rewatch. */
-export function lastActivityAt(e: Entry): number | null {
+/** Original completion timestamp for a series, excluding subsequent rewatches. */
+export function originalCompletionAt(e: Entry): number | null {
   if (validStamp(e.watchedAt)) return e.watchedAt
-  return latestTime(maxTime(Object.values(e.episodes ?? {})), maxTime(e.rewatches ?? []))
+  return e.mediaType === 'tv' ? maxTime(Object.values(e.episodes ?? {})) : maxTime(e.rewatches ?? [])
+}
+
+/** Latest viewing timestamp, including a show rewatch in progress. */
+export function lastActivityAt(e: Entry): number | null {
+  if (e.mediaType === 'movie') {
+    if (validStamp(e.watchedAt)) return e.watchedAt
+    return maxTime(e.rewatches ?? [])
+  }
+  return [e.watchedAt, maxTime(Object.values(e.episodes ?? {})), maxTime(e.rewatches ?? []), maxTime(Object.values(e.rewatchEpisodes ?? {}))]
+    .filter(validStamp)
+    .reduce<number | null>((latest, at) => latest == null ? at : Math.max(latest, at), null)
 }
 
 export type Activity = { entry: Entry; at: number; label: string }
@@ -738,7 +806,7 @@ export function recentCompletions(entries: Entry[], limit = 8): Activity[] {
   for (const e of entries) {
     if (e.mediaType === 'movie') {
       if (validStamp(e.watchedAt)) events.push({ entry: e, at: e.watchedAt, label: 'Movie' })
-    } else if (e.status === 'watched') {
+    } else if (e.status === 'watched' || validStamp(e.watchedAt)) {
       const at = validStamp(e.watchedAt) ? e.watchedAt : maxTime(Object.values(e.episodes ?? {}))
       if (at != null) events.push({ entry: e, at, label: 'Series' })
     }
@@ -785,7 +853,7 @@ export function activityByMonth(entries: Entry[], months = 12) {
   for (const e of entries) {
     if (e.mediaType === 'movie') {
       if (e.watchedAt != null) bump(e.watchedAt)
-    } else if (e.status === 'watched') {
+    } else if (e.status === 'watched' || validStamp(e.watchedAt)) {
       const at = validStamp(e.watchedAt) ? e.watchedAt : maxTime(Object.values(e.episodes ?? {}))
       if (at != null) bump(at)
     }

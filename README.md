@@ -1,7 +1,8 @@
 # CineTrack
 
 A personal movie and TV tracking app. Track what you want to watch, what you're
-watching, and what you've finished, with ratings, rewatches, and episode progress.
+watching, what you've finished, and what you've dropped, with ratings, rewatches,
+and episode progress.
 
 It runs locally and keeps your library on your machine. Movie and TV information
 comes from [TMDb](https://www.themoviedb.org/).

@@ -1,5 +1,6 @@
 import { useCallback, useSyncExternalStore } from 'react'
 import { setPersistenceState } from './persistence'
+import { STARTING_STATUS_IDS, type StartingStatus } from './status'
 
 export type ThemeId = 'paper' | 'halide' | 'velvet' | 'blueprint'
 
@@ -20,9 +21,8 @@ export const LANGUAGES: { id: string; label: string }[] = [
   { id: 'zh-CN', label: '中文' },
 ]
 
-const STATUS_IDS = ['planned', 'watching'] as const
 const TAB_IDS = ['all', 'movie', 'tv', 'favorites'] as const
-const SORT_IDS = ['added', 'lastWatched', 'title', 'rating', 'year'] as const
+const SORT_IDS = ['added', 'lastWatched', 'title', 'rating', 'year', 'status'] as const
 
 export const THEMES: { id: ThemeId; name: string; note: string; tone: 'light' | 'dark'; swatch: [string, string, string] }[] = [
   { id: 'paper', name: 'Paper', note: 'True white stock, oxblood ink', tone: 'light', swatch: ['#ffffff', '#14130f', '#7a2318'] },
@@ -44,7 +44,7 @@ export type Settings = {
   archiveName: string
   archiveItalicWordIndex: number
   showNavHints: boolean
-  defaultStatus: (typeof STATUS_IDS)[number]
+  defaultStatus: StartingStatus
   openAfterAdd: boolean
   defaultWatchDate: 'today' | 'blank'
   defaultShelfTab: (typeof TAB_IDS)[number]
@@ -107,8 +107,8 @@ function sanitize(s: Partial<Settings> & Record<string, unknown>): Settings {
   }
   const archiveWordCount = out.archiveName.trim().split(/\s+/).filter(Boolean).length
   if (out.archiveItalicWordIndex >= archiveWordCount) out.archiveItalicWordIndex = archiveWordCount - 1
-  if ((STATUS_IDS as readonly string[]).includes(s.defaultStatus as string)) {
-    out.defaultStatus = s.defaultStatus as Settings['defaultStatus']
+  if ((STARTING_STATUS_IDS as readonly string[]).includes(s.defaultStatus as string)) {
+    out.defaultStatus = s.defaultStatus as StartingStatus
   }
   if (s.defaultWatchDate === 'today' || s.defaultWatchDate === 'blank') out.defaultWatchDate = s.defaultWatchDate
   if ((TAB_IDS as readonly string[]).includes(s.defaultShelfTab as string)) {

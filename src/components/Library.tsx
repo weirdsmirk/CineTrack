@@ -13,13 +13,15 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'favorites', label: 'Favourites' },
 ]
 
-const FILTERS: (Status | 'all')[] = ['all', 'watching', 'planned', 'watched', 'dropped']
+type ShelfFilter = Status | 'rewatching' | 'all'
+const FILTERS: ShelfFilter[] = ['all', 'watching', 'planned', 'watched', 'rewatching', 'dropped']
 const SORTS = [
   { id: 'added', label: 'Recently added' },
   { id: 'lastWatched', label: 'Last watched' },
   { id: 'title', label: 'A–Z' },
   { id: 'rating', label: 'My rating' },
   { id: 'year', label: 'Year' },
+  { id: 'status', label: 'Status' },
 ] as const
 const RATING_OPTIONS = [
   { id: 0, label: 'Any' },
@@ -32,21 +34,26 @@ export type ShelfSort = (typeof SORTS)[number]['id']
 
 export function applyShelfFilters(
   pool: Entry[],
-  opts: { status: Status | 'all'; minRating: number; query: string; sort: ShelfSort },
+  opts: { status: ShelfFilter; minRating: number; query: string; sort: ShelfSort },
 ): Entry[] {
   let list = pool
-  if (opts.status !== 'all') list = list.filter((e) => e.status === opts.status)
+  if (opts.status === 'rewatching') list = list.filter((e) => e.mediaType === 'tv' && e.rewatching)
+  else if (opts.status === 'dropped') list = list.filter((e) => e.mediaType === 'tv' && e.status === 'dropped')
+  else if (opts.status !== 'all') list = list.filter((e) => e.status === opts.status)
   if (opts.minRating > 0) list = list.filter((e) => (e.rating ?? -1) >= opts.minRating)
   const trimmed = opts.query.trim().toLowerCase()
   if (trimmed) {
-    list = list.filter((e) => e.title.toLowerCase().includes(trimmed))
+    list = list.filter((e) => e.title.toLowerCase().includes(trimmed) || (e.mediaType === 'tv' && e.rewatching && 'rewatching'.includes(trimmed)))
   }
   const sorted = [...list]
+  const statusOrder: Record<Status, number> = { planned: 0, watching: 1, watched: 2, dropped: 3 }
+  const statusFor = (entry: Entry): Status => entry.mediaType === 'movie' && entry.status === 'dropped' ? 'planned' : entry.status
   sorted.sort((a, b) => {
     if (opts.sort === 'title') return a.title.localeCompare(b.title)
     if (opts.sort === 'rating') return (b.rating ?? -1) - (a.rating ?? -1)
     if (opts.sort === 'year') return (Number(b.year) || 0) - (Number(a.year) || 0)
     if (opts.sort === 'lastWatched') return (lastActivityAt(b) ?? -1) - (lastActivityAt(a) ?? -1)
+    if (opts.sort === 'status') return statusOrder[statusFor(a)] - statusOrder[statusFor(b)] || Number(b.rewatching) - Number(a.rewatching) || a.title.localeCompare(b.title)
     return b.addedAt - a.addedAt
   })
   return sorted
@@ -60,10 +67,14 @@ export default function Library({
   const { entries, get } = useLibrary()
   const { settings } = useSettings()
   const [tab, setTab] = useState<Tab>(settings.defaultShelfTab)
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>('all')
+  const [filter, setFilter] = useState<ShelfFilter>('all')
   const [sort, setSort] = useState<(typeof SORTS)[number]['id']>(settings.defaultSort)
   const [minRating, setMinRating] = useState<(typeof RATING_OPTIONS)[number]['id']>(0)
   const [q, setQ] = useState('')
+
+  useEffect(() => {
+    if (tab === 'movie' && filter === 'dropped') setFilter('all')
+  }, [tab, filter])
 
   const pool = useMemo(() => {
     if (tab === 'favorites') return entries.filter((e) => e.favorite)
@@ -102,7 +113,10 @@ export default function Library({
             <Chip
               key={t.id}
               active={tab === t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                setTab(t.id)
+                if (t.id === 'movie' && filter === 'dropped') setFilter('all')
+              }}
             >
               {t.label}
             </Chip>
@@ -110,6 +124,7 @@ export default function Library({
         </div>
         <FilterBar
           filter={filter}
+          showDropped={tab !== 'movie'}
           sort={sort}
           minRating={minRating}
           count={shown.length}
@@ -187,6 +202,7 @@ export default function Library({
 /** Collapses filter / sort controls into a single popover button. */
 function FilterBar({
   filter,
+  showDropped,
   sort,
   minRating,
   count,
@@ -194,11 +210,12 @@ function FilterBar({
   onSort,
   onMinRating,
 }: {
-  filter: (typeof FILTERS)[number]
+  filter: ShelfFilter
+  showDropped: boolean
   sort: (typeof SORTS)[number]['id']
   minRating: (typeof RATING_OPTIONS)[number]['id']
   count: number
-  onFilter: (v: (typeof FILTERS)[number]) => void
+  onFilter: (v: ShelfFilter) => void
   onSort: (v: (typeof SORTS)[number]['id']) => void
   onMinRating: (v: (typeof RATING_OPTIONS)[number]['id']) => void
 }) {
@@ -287,10 +304,10 @@ function FilterBar({
         {count} shown · sorted by {sortLabel}
       </div>
       <FilterGroup label="Status">
-        {FILTERS.map((f) => {
+        {FILTERS.filter((f) => showDropped || f !== 'dropped').map((f) => {
           const isActive = filter === f
           const isStatus = f !== 'all'
-          const statusKey = f as import('../lib/library').Status
+          const statusKey = (f === 'rewatching' ? 'watched' : f) as Status
           const activeStyle = isStatus ? STATUS_STYLE[statusKey] : 'border-[var(--primary)] bg-[var(--primary)] text-primary-foreground'
           const inactiveStyle = isStatus
             ? STATUS_INACTIVE[statusKey]

@@ -833,12 +833,21 @@ function cinetrackSqlitePersistence(): Plugin {
                     const id = Number(rawId)
                     if (val.mediaType !== mediaType || val.id !== id) continue
                     const episodes: Record<string, number> = {}
+                    const rewatchEpisodes: Record<string, number> = {}
                     let acceptedEpisodes = 0
                     if (val.episodes && typeof val.episodes === 'object' && !Array.isArray(val.episodes)) {
                       for (const [episodeKey, stamp] of Object.entries(val.episodes as Record<string, unknown>)) {
                         if (acceptedEpisodes >= 20000) break
                         if (/^\d+-\d+$/.test(episodeKey) && isValidTimestamp(stamp)) episodes[episodeKey] = stamp
                         if (Object.prototype.hasOwnProperty.call(episodes, episodeKey)) acceptedEpisodes++
+                      }
+                    }
+                    let acceptedRewatchEpisodes = 0
+                    if (mediaType === 'tv' && val.rewatchEpisodes && typeof val.rewatchEpisodes === 'object' && !Array.isArray(val.rewatchEpisodes)) {
+                      for (const [episodeKey, stamp] of Object.entries(val.rewatchEpisodes as Record<string, unknown>)) {
+                        if (acceptedRewatchEpisodes >= 20000) break
+                        if (/^\d+-\d+$/.test(episodeKey) && isValidTimestamp(stamp)) rewatchEpisodes[episodeKey] = stamp
+                        if (Object.prototype.hasOwnProperty.call(rewatchEpisodes, episodeKey)) acceptedRewatchEpisodes++
                       }
                     }
                     const rewatches = Array.isArray(val.rewatches) ? val.rewatches.filter(isValidTimestamp).slice(-500) : []
@@ -852,13 +861,17 @@ function cinetrackSqlitePersistence(): Plugin {
                       poster: typeof val.poster === 'string' && val.poster.length <= 500 && /^\/[A-Za-z0-9/_\-.]+$/.test(val.poster) && !val.poster.includes('..') ? val.poster : null,
                       backdrop: typeof val.backdrop === 'string' && val.backdrop.length <= 500 && /^\/[A-Za-z0-9/_\-.]+$/.test(val.backdrop) && !val.backdrop.includes('..') ? val.backdrop : null,
                       rating: typeof val.rating === 'number' && Number.isInteger(val.rating) && val.rating >= 1 && val.rating <= 10 ? val.rating : null,
-                      status: ['planned', 'watching', 'watched', 'dropped'].includes(val.status) ? val.status : 'planned',
+                      status: mediaType === 'movie' && val.status === 'dropped'
+                        ? 'planned'
+                        : ['planned', 'watching', 'watched', 'dropped'].includes(val.status) ? val.status : 'planned',
+                      rewatching: mediaType === 'tv' && val.status === 'watched' && val.rewatching === true,
                       favorite: val.favorite === true,
                       addedAt,
                       watchedAt,
                       runtime: typeof val.runtime === 'number' && Number.isFinite(val.runtime) ? Math.min(600, Math.max(0, Math.floor(val.runtime))) : null,
                       totalEpisodes: typeof val.totalEpisodes === 'number' && Number.isFinite(val.totalEpisodes) ? Math.min(10000, Math.max(0, Math.floor(val.totalEpisodes))) : null,
                       episodes,
+                      rewatchEpisodes,
                       rewatches,
                       ...(typeof val.note === 'string' ? { note: val.note.slice(0, 2000) } : {}),
                     }

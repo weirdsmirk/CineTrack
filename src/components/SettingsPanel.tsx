@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ARCHIVE_NAME_MAX_LENGTH, DEFAULT_ARCHIVE_NAME, LANGUAGES, THEMES, useSettings } from '../lib/settings'
-import { minutesWatched, parseLibraryImport, useLibrary, watchedCount } from '../lib/library'
+import { loggedEpisodeCount, minutesWatched, parseLibraryImport, useLibrary } from '../lib/library'
 import { ConfirmDialog, Chip, SETTINGS_PANEL_ID, handleRadioGroupKeyDown, useBodyScrollLock, useFocusTrap } from './ui'
 import { useToast } from './Toast'
 
@@ -87,7 +87,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
     total: entries.length,
   }
 
-  const episodes = entries.reduce((s, e) => s + watchedCount(e), 0)
+  const episodes = entries.reduce((s, e) => s + loggedEpisodeCount(e), 0)
   const minutes = minutesWatched(entries)
   const hours = Math.round(minutes / 60)
   const days = (minutes / 1440).toFixed(1)
@@ -368,6 +368,7 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
                 { id: 'title', label: 'A–Z' },
                 { id: 'rating', label: 'My rating' },
                 { id: 'year', label: 'Year' },
+                { id: 'status', label: 'Status' },
               ]}
               onChange={(v) => set('defaultSort', v)}
             />

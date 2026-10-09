@@ -151,16 +151,24 @@ export const STATUS_BADGE: Record<Status, { bg: string; label: string; icon: Rea
   },
 }
 
-export function StatusBadge({ status }: { status: Status }) {
+export function StatusBadge({ status, rewatching = false }: { status: Status; rewatching?: boolean }) {
   const s = STATUS_BADGE[status] ?? STATUS_BADGE.planned
   return (
     <span
       role="img"
       title={s.label}
-      aria-label={s.label}
-      className={`flex h-6 w-6 items-center justify-center ${s.bg}`}
+      aria-label={`${s.label}${rewatching ? ' · Rewatching' : ''}`}
+      className={`relative flex h-6 w-6 items-center justify-center ${s.bg}`}
     >
       {s.icon}
+      {rewatching && (
+        <span className="absolute -bottom-1 -right-1 flex h-3 w-3 items-center justify-center border border-background bg-[var(--primary)] text-primary-foreground" aria-hidden>
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 7v5h-5M4 17v-5h5" />
+            <path d="M5.5 9A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.5-3" />
+          </svg>
+        </span>
+      )}
     </span>
   )
 }
@@ -495,7 +503,7 @@ export const Poster = memo(function Poster({
         <div className="absolute left-2 top-2 z-10">
           {entry ? (
             <div className="pointer-events-none">
-              <StatusBadge status={entry.status} />
+              <StatusBadge status={entry.status} rewatching={entry.rewatching} />
             </div>
           ) : (
             <button

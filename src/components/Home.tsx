@@ -1,6 +1,6 @@
 import { Suspense, lazy, useMemo, useState } from 'react'
 import { img, type MediaType, type TmdbTitle } from '../lib/tmdb'
-import { formatDayMonth, formatRelativeDay, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
+import { countShowRewatches, countStatuses, formatDayMonth, formatRelativeDay, loggedEpisodeCount, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
 import { useSettings } from '../lib/settings'
 import { Empty, SectionHead, Stat } from './ui'
 import MastheadName from './MastheadName'
@@ -54,13 +54,16 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
   const stats = useMemo(() => {
     const movies = entries.filter((e) => e.mediaType === 'movie')
     const shows = entries.filter((e) => e.mediaType === 'tv')
+    const statuses = countStatuses(entries)
     const moviesSeen = movies.filter((m) => m.status === 'watched' || m.watchedAt != null).length
-    const showsSeen = shows.filter((s) => s.status === 'watched').length
-    const eps = shows.reduce((s, e) => s + watchedCount(e), 0)
+    const showsSeen = shows.filter((s) => s.status === 'watched' || s.watchedAt != null).length
+    const eps = shows.reduce((s, e) => s + loggedEpisodeCount(e), 0)
     const mins = minutesWatched(entries)
     const rated = entries.filter((e) => e.rating)
     return {
       total: entries.length,
+      dropped: statuses.dropped,
+      rewatches: countShowRewatches(entries),
       moviesSeen,
       moviesTotal: movies.length,
       showsSeen,
@@ -69,7 +72,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
       hours: Math.round(mins / 60),
       days: (mins / 1440).toFixed(1),
       avg: rated.length ? (rated.reduce((s, e) => s + (e.rating ?? 0), 0) / rated.length).toFixed(1) : '—',
-      inProgress: entries.filter((e) => e.status === 'watching'),
+      inProgress: entries.filter((e) => e.status === 'watching' || (e.mediaType === 'tv' && e.rewatching)),
       planned: entries.filter((e) => e.status === 'planned'),
     }
   }, [entries])
@@ -92,17 +95,19 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
             <MastheadName name={settings.archiveName} italicWordIndex={settings.archiveItalicWordIndex} />
           </h1>
         </div>
-        <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-7">
           <Stat label="Titles held" value={stats.total} />
           <Stat label="Movies seen" value={stats.moviesSeen} unit={`/ ${stats.moviesTotal}`} />
           <Stat label="Shows seen" value={stats.showsSeen} unit={`/ ${stats.showsTotal}`} />
+          <Stat label="Dropped" value={stats.dropped} />
+          <Stat label="Rewatches" value={stats.rewatches} />
           <Stat label="Episodes logged" value={stats.episodes} />
           <Stat label="Time in seat" value={stats.hours} unit="hrs" />
         </div>
       </section>
 
       <section>
-        <SectionHead title="Currently in progress" note="Series and movies left mid-viewing." rule={false} />
+        <SectionHead title="Currently in progress" note="Series, movies, and rewatches left mid-viewing." rule={false} />
         {stats.inProgress.length === 0 ? (
           <Empty>Nothing underway — visit Discover to begin a title</Empty>
         ) : (
@@ -133,7 +138,7 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
                   </span>
                   <span className="rule-label">
                     {e.mediaType === 'tv'
-                      ? `${watchedCount(e)} of ${e.totalEpisodes ?? '?'} episodes`
+                      ? `${e.rewatching ? Object.keys(e.rewatchEpisodes).length : watchedCount(e)} of ${e.totalEpisodes ?? '?'} episodes${e.rewatching ? ' · Rewatching' : ''}`
                       : 'Movie · in progress'}
                   </span>
                   {e.mediaType === 'tv' && (
