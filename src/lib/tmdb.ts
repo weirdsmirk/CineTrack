@@ -270,7 +270,7 @@ export async function tmdb<T>(  path: string,
           const ct = res.headers.get('content-type') || ''
           let body: unknown = {}
           try {
-            if (ct.includes('application/json')) body = JSON.parse(text)
+            if (ct.toLowerCase().includes('application/json')) body = JSON.parse(text)
             else body = { status_message: text.slice(0, 500) }
           } catch {}
           // Upstream/proxy error strings are untrusted: strip control chars and

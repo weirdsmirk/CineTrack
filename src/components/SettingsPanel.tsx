@@ -55,8 +55,14 @@ export default function SettingsPanel({ open, onClose }: { open: boolean; onClos
       const anchor = document.createElement('a')
       anchor.href = url
       anchor.download = `cinetrack-${new Date().toISOString().slice(0, 10)}.json`
-      anchor.click()
-      URL.revokeObjectURL(url)
+      try {
+        document.body.append(anchor)
+        anchor.click()
+      } finally {
+        anchor.remove()
+        // Let the browser start reading the Blob before releasing its URL.
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
       toast('Library exported', 'success')
     } catch {
       toast('Export failed', 'error')

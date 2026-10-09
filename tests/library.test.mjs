@@ -290,6 +290,17 @@ test('library imports preserve original show history and merge active rewatch pr
   assert.deepEqual(result.rewatches, [300])
 })
 
+test('rewatch history merges idempotently without collapsing same-time completions', () => {
+  const current = entry({ id: 13, mediaType: 'tv', rewatches: [500, 500] })
+  const imported = entry({ id: 13, mediaType: 'tv', rewatches: [500] })
+  const firstMerge = parseLibraryImport(JSON.stringify([imported]), [current]).merged['tv:13']
+  assert.deepEqual(firstMerge.rewatches, [500, 500])
+
+  const repeatedExport = entry({ id: 13, mediaType: 'tv', rewatches: [500, 500] })
+  const repeatedMerge = parseLibraryImport(JSON.stringify([repeatedExport]), [firstMerge]).merged['tv:13']
+  assert.deepEqual(repeatedMerge.rewatches, [500, 500])
+})
+
 test('JSON import rejects malformed, oversized, and unsupported payloads', () => {
   assert.throws(() => parseLibraryImport('{'), /could not be read/)
   assert.throws(() => parseLibraryImport('{"titles":[]}'), /expected a list/)

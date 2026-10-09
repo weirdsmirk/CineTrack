@@ -178,6 +178,21 @@ function clearLegacyStorage() {
   }
 }
 
+/** Merge event histories idempotently while preserving distinct events that
+ *  happen to share a timestamp (for example, imports created in one tick). */
+function mergeTimestampHistory(first: number[], second: number[]): number[] {
+  const counts = new Map<number, number>()
+  for (const timestamp of first) counts.set(timestamp, (counts.get(timestamp) ?? 0) + 1)
+  const secondCounts = new Map<number, number>()
+  for (const timestamp of second) secondCounts.set(timestamp, (secondCounts.get(timestamp) ?? 0) + 1)
+  for (const [timestamp, count] of secondCounts) {
+    counts.set(timestamp, Math.max(counts.get(timestamp) ?? 0, count))
+  }
+  return [...counts].flatMap(([timestamp, count]) => Array(count).fill(timestamp))
+    .sort((a, b) => a - b)
+    .slice(-MAX_REWATCHES)
+}
+
 const listeners = new Set<() => void>()
 const noopSubscribe = () => () => {}
 let cache = readLegacySnapshot()
@@ -571,9 +586,7 @@ export function useLibrary(subscribeToStore = true) {
 /** Preserve the previous browser store's values on collisions, fill missing
  * fields from SQLite, and combine progress during the one-time migration. */
 function mergeMigratedEntry(legacy: Entry, database: Entry): Entry {
-  const rewatches = [...new Set([...legacy.rewatches, ...database.rewatches])]
-    .sort((a, b) => a - b)
-    .slice(-MAX_REWATCHES)
+  const rewatches = mergeTimestampHistory(legacy.rewatches, database.rewatches)
   return {
     ...database,
     ...legacy,
@@ -599,9 +612,7 @@ export type ImportResult = { merged: Record<string, Entry>; imported: number; sk
 /** Keep existing curated fields on collisions; imports can contribute missing
  * metadata and viewing progress without erasing the current library. */
 function mergeImportedEntry(existing: Entry, incoming: Entry): Entry {
-  const rewatches = [...new Set([...existing.rewatches, ...incoming.rewatches])]
-    .sort((a, b) => a - b)
-    .slice(-MAX_REWATCHES)
+  const rewatches = mergeTimestampHistory(existing.rewatches, incoming.rewatches)
   return {
     ...incoming,
     ...existing,
