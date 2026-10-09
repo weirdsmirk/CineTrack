@@ -564,16 +564,10 @@ export default function TitleDetail({
                     showId={id}
                     seasons={data.seasons.filter((s) => s.episode_count > 0)}
                     watched={entry?.rewatching ? entry.rewatchEpisodes : entry?.episodes ?? {}}
-                    rewatchProgress={entry?.rewatchEpisodes ?? {}}
                     tracked={!!entry && (entry.status !== 'watched' || entry.rewatching)}
                     completed={entry?.status === 'watched'}
                     rewatching={!!entry?.rewatching}
-                    totalEpisodes={entry?.totalEpisodes ?? detailTotalEpisodes}
                     onAdd={() => add({ status: 'watching' })}
-                    onToggleRewatch={(active) => {
-                      setRewatching(id, active)
-                      toast(active ? 'Rewatch started' : 'Rewatch paused', 'info')
-                    }}
                     onToggle={(s, e) => toggleEpisode(id, s, e)}
                     onBulk={(s, nums, w) => setSeasonWatched(id, s, nums, w)}
                   />
@@ -1868,26 +1862,20 @@ function Seasons({
   showId,
   seasons,
   watched,
-  rewatchProgress,
   tracked,
   completed,
   rewatching,
-  totalEpisodes,
   onAdd,
-  onToggleRewatch,
   onToggle,
   onBulk,
 }: {
   showId: number
   seasons: { id: number; season_number: number; name: string; episode_count: number; air_date: string | null }[]
   watched: Record<string, number>
-  rewatchProgress: Record<string, number>
   tracked: boolean
   completed: boolean
   rewatching: boolean
-  totalEpisodes: number | null
   onAdd: () => void
-  onToggleRewatch: (active: boolean) => void
   onToggle: (s: number, e: number) => void
   onBulk: (s: number, nums: number[], watched: boolean) => void
 }) {
@@ -1947,35 +1935,6 @@ function Seasons({
 
   return (
     <div>
-      {completed && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border border-border bg-card px-3.5 py-3">
-          <div>
-            <p className="rule-label text-[10px] text-[var(--primary)]">
-              {rewatching ? 'Rewatching' : Object.keys(rewatchProgress).length ? 'Rewatch paused' : 'Completed'}
-            </p>
-            <p className="mt-1 text-[12px] text-muted-foreground">
-              {rewatching
-                ? `${Object.keys(watched).length} of ${totalEpisodes ?? entryTotal(seasons)} episodes · original completion stays intact`
-                : Object.keys(rewatchProgress).length
-                  ? `${Object.keys(rewatchProgress).length} rewatch episodes saved separately`
-                  : 'Start a separate episode run; finishing it adds one rewatch.'}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => onToggleRewatch(!rewatching)}
-            aria-pressed={rewatching}
-            className={`press border px-3 py-2 font-sans text-[10px] font-medium uppercase tracking-[0.12em] ${
-              rewatching
-                ? 'border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-primary-foreground'
-                : 'border-border hover:border-[var(--primary)] hover:text-[var(--primary)]'
-            }`}
-          >
-            {rewatching ? 'Pause rewatch' : Object.keys(rewatchProgress).length ? 'Resume rewatch' : 'Start rewatch'}
-          </button>
-        </div>
-      )}
-
       {!tracked && !completed && (
         <div className="mb-4">
           <button
@@ -2175,8 +2134,4 @@ function Seasons({
       </p>
     </div>
   )
-}
-
-function entryTotal(seasons: { episode_count: number }[]) {
-  return seasons.reduce((total, season) => total + season.episode_count, 0)
 }
