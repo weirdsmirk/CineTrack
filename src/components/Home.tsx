@@ -1,6 +1,6 @@
 import { Suspense, lazy, useMemo, useState } from 'react'
 import { img, type MediaType, type TmdbTitle } from '../lib/tmdb'
-import { countShowRewatches, countStatuses, formatDayMonth, formatRelativeDay, loggedEpisodeCount, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
+import { countShowRewatches, countStatuses, formatDayMonth, formatRelativeDay, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
 import { useSettings } from '../lib/settings'
 import { Empty, SectionHead, Stat } from './ui'
 import MastheadName from './MastheadName'
@@ -57,7 +57,6 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
     const statuses = countStatuses(entries)
     const moviesSeen = movies.filter((m) => m.status === 'watched' || m.watchedAt != null).length
     const showsSeen = shows.filter((s) => s.status === 'watched' || s.watchedAt != null).length
-    const eps = shows.reduce((s, e) => s + loggedEpisodeCount(e), 0)
     const mins = minutesWatched(entries)
     const rated = entries.filter((e) => e.rating)
     return {
@@ -68,7 +67,6 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
       moviesTotal: movies.length,
       showsSeen,
       showsTotal: shows.length,
-      episodes: eps,
       hours: Math.round(mins / 60),
       days: (mins / 1440).toFixed(1),
       avg: rated.length ? (rated.reduce((s, e) => s + (e.rating ?? 0), 0) / rated.length).toFixed(1) : '—',
@@ -95,13 +93,12 @@ export default function Home({ onOpen }: { onOpen: (t: MediaType, id: number, se
             <MastheadName name={settings.archiveName} italicWordIndex={settings.archiveItalicWordIndex} />
           </h1>
         </div>
-        <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-7">
+        <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Titles held" value={stats.total} />
           <Stat label="Movies seen" value={stats.moviesSeen} unit={`/ ${stats.moviesTotal}`} />
           <Stat label="Shows seen" value={stats.showsSeen} unit={`/ ${stats.showsTotal}`} />
           <Stat label="Dropped" value={stats.dropped} />
           <Stat label="Rewatches" value={stats.rewatches} />
-          <Stat label="Episodes logged" value={stats.episodes} />
           <Stat label="Time in seat" value={stats.hours} unit="hrs" />
         </div>
       </section>
