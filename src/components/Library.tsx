@@ -79,7 +79,7 @@ export default function Library({
   )
 
   const [page, setPage] = useState(1)
-  const PAGE_SIZE = 48
+  const PAGE_SIZE = 40
   const paged = useMemo(() => shown.slice(0, page * PAGE_SIZE), [shown, page])
   useEffect(() => setPage(1), [tab, filter, minRating, deferredQ, sort])
 
