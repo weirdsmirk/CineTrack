@@ -1,6 +1,6 @@
 import { Suspense, lazy, useMemo, useState } from 'react'
 import { img, type MediaType, type TmdbTitle } from '../lib/tmdb'
-import { countRewatches, countStatuses, formatDayMonth, formatRelativeDay, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
+import { countRewatches, formatDayMonth, formatRelativeDay, minutesWatched, progress, recentCompletions, useLibrary, watchedCount } from '../lib/library'
 import { useSettings } from '../lib/settings'
 import type { LibraryView } from './Library'
 import { Empty, SectionHead, Stat } from './ui'
@@ -61,7 +61,6 @@ export default function Home({
   const stats = useMemo(() => {
     const movies = entries.filter((e) => e.mediaType === 'movie')
     const shows = entries.filter((e) => e.mediaType === 'tv')
-    const statuses = countStatuses(entries)
     const moviesSeen = movies.filter((m) => m.status === 'watched' || m.watchedAt != null).length
     const showsSeen = shows.filter((s) => s.status === 'watched' || s.watchedAt != null).length
     const mins = minutesWatched(entries)
@@ -69,7 +68,6 @@ export default function Home({
     return {
       total: entries.length,
       favorites: entries.filter((e) => e.favorite).length,
-      dropped: statuses.dropped,
       rewatches: countRewatches(entries),
       moviesSeen,
       moviesTotal: movies.length,
@@ -101,12 +99,11 @@ export default function Home({
             <MastheadName name={settings.archiveName} italicWordIndex={settings.archiveItalicWordIndex} />
           </h1>
         </div>
-        <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-7">
+        <div className="mt-8 grid grid-cols-2 gap-y-8 sm:grid-cols-3 lg:grid-cols-6">
           <Stat label="Titles held" value={stats.total} onClick={() => onLibraryNavigate({ tab: 'all', filter: 'all' })} />
           <Stat label="Films seen" value={stats.moviesSeen} unit={`/ ${stats.moviesTotal}`} onClick={() => onLibraryNavigate({ tab: 'movie', filter: 'watched' })} />
           <Stat label="Shows seen" value={stats.showsSeen} unit={`/ ${stats.showsTotal}`} onClick={() => onLibraryNavigate({ tab: 'tv', filter: 'watched' })} />
           <Stat label="Favourites" value={stats.favorites} onClick={() => onLibraryNavigate({ tab: 'favorites', filter: 'all' })} />
-          <Stat label="Dropped" value={stats.dropped} onClick={() => onLibraryNavigate({ tab: 'tv', filter: 'dropped' })} />
           <Stat label="Rewatches" value={stats.rewatches} onClick={() => onLibraryNavigate({ tab: 'all', filter: 'rewatched' })} />
           <Stat label="Time in seat" value={stats.hours} unit="hrs" onClick={() => document.getElementById('monthly-log')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })} />
         </div>
